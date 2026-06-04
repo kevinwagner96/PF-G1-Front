@@ -1,10 +1,22 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { mockUsuarios, Usuario } from './mock-data'
+import { createContext, useContext, useState, useEffect } from 'react'
+import { apiRequest } from './api'
+import type { ReactNode } from 'react'
+import type { Usuario } from './mock-data'
+
+type AuthenticatedUser = Omit<Usuario, 'password'>
+
+interface LoginResponse {
+  user: AuthenticatedUser
+}
+
+interface ChangePasswordResponse {
+  user: AuthenticatedUser
+}
 
 interface AuthState {
-  user: Usuario | null
+  user: AuthenticatedUser | null
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
@@ -30,10 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    // Simular verificación de sesión
     const savedUser = localStorage.getItem('surgicare_user')
     if (savedUser) {
-      const user = JSON.parse(savedUser) as Usuario
+      const user = JSON.parse(savedUser) as AuthenticatedUser
       setState({
         user,
         isAuthenticated: true,
@@ -49,37 +60,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<{ success: boolean; requiresPasswordChange?: boolean }> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
-    // Simular delay de red
-    await new Promise(resolve => setTimeout(resolve, 800))
+    try {
+      const { user } = await apiRequest<LoginResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      })
 
-    const user = mockUsuarios.find(u => u.email === email)
+      localStorage.setItem('surgicare_user', JSON.stringify(user))
+      
+      setState({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+        requiresPasswordChange: user.requiereCambioPassword,
+      })
 
-    if (!user) {
-      setState(prev => ({ ...prev, isLoading: false, error: 'Credenciales incorrectas' }))
+      return { success: true, requiresPasswordChange: user.requiereCambioPassword }
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Credenciales incorrectas',
+      }))
       return { success: false }
     }
-
-    if (user.password !== password) {
-      setState(prev => ({ ...prev, isLoading: false, error: 'Credenciales incorrectas' }))
-      return { success: false }
-    }
-
-    if (user.bloqueado) {
-      setState(prev => ({ ...prev, isLoading: false, error: 'Cuenta bloqueada. Contacte al administrador.' }))
-      return { success: false }
-    }
-
-    localStorage.setItem('surgicare_user', JSON.stringify(user))
-    
-    setState({
-      user,
-      isAuthenticated: true,
-      isLoading: false,
-      error: null,
-      requiresPasswordChange: user.requiereCambioPassword,
-    })
-
-    return { success: true, requiresPasswordChange: user.requiereCambioPassword }
   }
 
   const logout = () => {
@@ -94,26 +99,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const changePassword = async (newPassword: string): Promise<boolean> => {
-    setState(prev => ({ ...prev, isLoading: true }))
+    if (!state.user) {
+      return false
+    }
 
-    // Simular delay
-    await new Promise(resolve => setTimeout(resolve, 500))
+    setState(prev => ({ ...prev, isLoading: true, error: null }))
 
-    if (state.user) {
-      const updatedUser = { ...state.user, requiereCambioPassword: false }
-      localStorage.setItem('surgicare_user', JSON.stringify(updatedUser))
-      
+    try {
+      const { user } = await apiRequest<ChangePasswordResponse>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ userId: state.user.id, newPassword }),
+      })
+
+      localStorage.setItem('surgicare_user', JSON.stringify(user))
+    
       setState(prev => ({
         ...prev,
-        user: updatedUser,
+        user,
         isLoading: false,
         requiresPasswordChange: false,
       }))
-      return true
-    }
 
-    setState(prev => ({ ...prev, isLoading: false }))
-    return false
+      return true
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'Error al cambiar la contraseña',
+      }))
+      return false
+    }
   }
 
   const clearError = () => {

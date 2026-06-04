@@ -56,6 +56,20 @@ Luego abrir la URL indicada por la terminal. Normalmente es:
 http://localhost:3000
 ```
 
+## Conexion con backend
+
+El login consume la API REST del backend. Para desarrollo local:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Por defecto apunta a:
+
+```text
+http://127.0.0.1:3010/api/v1
+```
+
 ## Scripts disponibles
 
 ```bash
@@ -67,7 +81,7 @@ pnpm lint
 
 ## Usuarios de prueba
 
-La aplicacion utiliza datos mock en `lib/mock-data.ts`.
+La autenticacion consulta los usuarios cargados en la tabla `users` del backend.
 
 | Rol | Email | Password |
 | --- | --- | --- |
@@ -91,12 +105,14 @@ styles/       Estilos globales adicionales
 
 ## Variables de entorno
 
-Actualmente no se detectan variables de entorno obligatorias para ejecutar el frontend en modo desarrollo.
+| Variable | Descripcion |
+| --- | --- |
+| `NEXT_PUBLIC_API_BASE_URL` | URL base de la API REST. Por defecto: `http://127.0.0.1:3010/api/v1` |
 
 ## Notas
 
-- El proyecto contiene datos de prueba, incluyendo usuarios y passwords mock. No deben utilizarse como credenciales reales.
-- La autenticacion actual funciona del lado del navegador con `localStorage`.
+- El proyecto conserva datos mock para las pantallas funcionales, pero el login ya consulta al backend.
+- La sesion autenticada se conserva del lado del navegador con `localStorage`.
 - El archivo `next.config.mjs` ignora errores de TypeScript durante el build. Antes de una entrega final conviene revisar y corregir esos errores si aparecen.
 - En produccion se incluye Vercel Analytics.
 
