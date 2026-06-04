@@ -1,17 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Stethoscope, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { login, isLoading, error, clearError } = useAuth()
+  const { login, isAuthenticated, isLoading, requiresPasswordChange, error, clearError } = useAuth()
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace(requiresPasswordChange ? '/cambiar-password' : '/seleccionar-experiencia')
+    }
+  }, [isAuthenticated, isLoading, requiresPasswordChange, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,7 +29,7 @@ export default function LoginPage() {
       if (result.requiresPasswordChange) {
         router.push('/cambiar-password')
       } else {
-        router.push('/dashboard')
+        router.push('/seleccionar-experiencia')
       }
     }
   }

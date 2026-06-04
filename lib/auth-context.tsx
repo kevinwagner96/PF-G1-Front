@@ -7,6 +7,13 @@ import type { Usuario } from './mock-data'
 
 type AuthenticatedUser = Omit<Usuario, 'password'>
 
+const SESSION_DURATION_MS = 2 * 60 * 60 * 1000
+
+interface StoredSession {
+  user: AuthenticatedUser
+  expiresAt: number
+}
+
 interface LoginResponse {
   user: AuthenticatedUser
 }
@@ -32,6 +39,13 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+function createStoredSession(user: AuthenticatedUser): StoredSession {
+  return {
+    user,
+    expiresAt: Date.now() + SESSION_DURATION_MS,
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -42,9 +56,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('surgicare_user')
-    if (savedUser) {
-      const user = JSON.parse(savedUser) as AuthenticatedUser
+    const savedSession = localStorage.getItem('surgicare_session')
+    const legacySavedUser = localStorage.getItem('surgicare_user')
+
+    if (savedSession) {
+      const session = JSON.parse(savedSession) as StoredSession
+
+      if (session.expiresAt <= Date.now()) {
+        localStorage.removeItem('surgicare_session')
+        localStorage.removeItem('surgicare_user')
+        setState(prev => ({ ...prev, isLoading: false }))
+        return
+      }
+
+      setState({
+        user: session.user,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+        requiresPasswordChange: session.user.requiereCambioPassword,
+      })
+    } else if (legacySavedUser) {
+      const user = JSON.parse(legacySavedUser) as AuthenticatedUser
+      const session = createStoredSession(user)
+      localStorage.setItem('surgicare_session', JSON.stringify(session))
+      localStorage.removeItem('surgicare_user')
+
       setState({
         user,
         isAuthenticated: true,
@@ -57,6 +94,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!state.isAuthenticated) return
+
+    const savedSession = localStorage.getItem('surgicare_session')
+    if (!savedSession) return
+
+    const session = JSON.parse(savedSession) as StoredSession
+    const remainingTime = session.expiresAt - Date.now()
+
+    if (remainingTime <= 0) {
+      logout()
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      logout()
+    }, remainingTime)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [state.isAuthenticated])
+
   const login = async (email: string, password: string): Promise<{ success: boolean; requiresPasswordChange?: boolean }> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
@@ -66,7 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email, password }),
       })
 
-      localStorage.setItem('surgicare_user', JSON.stringify(user))
+      localStorage.setItem('surgicare_session', JSON.stringify(createStoredSession(user)))
+      localStorage.removeItem('surgicare_user')
       
       setState({
         user,
@@ -89,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('surgicare_user')
+    localStorage.removeItem('surgicare_session')
     setState({
       user: null,
       isAuthenticated: false,
@@ -111,7 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ userId: state.user.id, newPassword }),
       })
 
-      localStorage.setItem('surgicare_user', JSON.stringify(user))
+      localStorage.setItem('surgicare_session', JSON.stringify(createStoredSession(user)))
+      localStorage.removeItem('surgicare_user')
     
       setState(prev => ({
         ...prev,

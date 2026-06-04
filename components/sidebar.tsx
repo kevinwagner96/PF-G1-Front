@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
+  ArrowLeftRight,
   ChevronDown, 
   ChevronRight, 
   LayoutDashboard, 
@@ -49,14 +50,32 @@ const menuItems: MenuItem[] = [
   { id: 'reportes', label: 'Reportes', icon: <FileText size={20} />, href: '/reportes' },
 ]
 
+const mvpMenuItems: MenuItem[] = [
+  {
+    id: 'cirugias',
+    label: 'Cirugias',
+    icon: <Calendar size={20} />,
+    submenu: [
+      {
+        id: 'lista-cirugias',
+        label: 'Lista de Cirugias',
+        icon: <ClipboardList size={18} />,
+        href: '/mvp/cirugias',
+      },
+    ],
+  },
+]
+
 interface SidebarProps {
   activePage?: string
+  navigationMode?: 'mockup' | 'mvp'
 }
 
-export function Sidebar({ activePage = 'cirugias' }: SidebarProps) {
+export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: SidebarProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
   const [expanded, setExpanded] = useState<string | null>('cirugias')
+  const visibleMenuItems = navigationMode === 'mvp' ? mvpMenuItems : menuItems
 
   const handleLogout = () => {
     logout()
@@ -88,7 +107,7 @@ export function Sidebar({ activePage = 'cirugias' }: SidebarProps) {
 
       <nav className="flex-1 overflow-y-auto p-4">
         <ul className="space-y-1">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const active = isActive(item)
             return (
               <li key={item.id}>
@@ -145,6 +164,14 @@ export function Sidebar({ activePage = 'cirugias' }: SidebarProps) {
       </nav>
 
       <div className="p-4 border-t border-gray-200">
+        <button
+          type="button"
+          onClick={() => router.push('/seleccionar-experiencia')}
+          className="mb-3 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          <ArrowLeftRight size={18} className="text-blue-600" />
+          <span className="flex-1 text-left text-sm font-medium">Cambiar modo</span>
+        </button>
         <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white">
             <User size={18} />

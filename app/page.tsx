@@ -1,20 +1,28 @@
 'use client'
 
-import Sidebar from '@/components/sidebar'
-import CirugiasTable from '@/components/cirugias-table'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth-context'
 
 export default function Home() {
+  const router = useRouter()
+  const { isAuthenticated, isLoading, requiresPasswordChange } = useAuth()
+
+  useEffect(() => {
+    if (isLoading) return
+
+    if (!isAuthenticated) {
+      router.replace('/login')
+    } else if (requiresPasswordChange) {
+      router.replace('/cambiar-password')
+    } else {
+      router.replace('/seleccionar-experiencia')
+    }
+  }, [isAuthenticated, isLoading, requiresPasswordChange, router])
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <main className="flex-1 overflow-auto">
-          <div className="p-6 md:p-8">
-            <CirugiasTable />
-          </div>
-        </main>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="animate-pulse text-muted-foreground">Cargando...</div>
     </div>
   )
 }

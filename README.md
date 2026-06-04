@@ -56,6 +56,28 @@ Luego abrir la URL indicada por la terminal. Normalmente es:
 http://localhost:3000
 ```
 
+## Ejecucion con Docker
+
+El compose principal esta en el repo backend (`PF-G1-Back`) y espera que ambos repos esten como carpetas hermanas:
+
+```text
+proyecto_final_workspace/
+  PF-G1-Back/
+  PF-G1-Front/
+```
+
+Desde `PF-G1-Back`:
+
+```bash
+docker compose up --build
+```
+
+Luego abrir:
+
+```text
+http://localhost:3000
+```
+
 ## Conexion con backend
 
 El login consume la API REST del backend. Para desarrollo local:

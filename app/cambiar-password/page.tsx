@@ -53,7 +53,7 @@ export default function CambiarPasswordPage() {
 
     const success = await changePassword(newPassword)
     if (success) {
-      router.push('/dashboard')
+      router.push('/seleccionar-experiencia')
     } else {
       setError('Error al cambiar la contraseña')
     }
