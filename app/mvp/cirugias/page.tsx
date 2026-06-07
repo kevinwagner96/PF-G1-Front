@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, RefreshCw } from 'lucide-react'
+import {
+  Activity,
+  CalendarDays,
+  CheckCircle,
+  Clock,
+  RefreshCw,
+  Sparkles,
+  XCircle,
+} from 'lucide-react'
 import Sidebar from '@/components/sidebar'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
@@ -25,6 +33,59 @@ interface CirugiaReal {
   observaciones: string | null
 }
 
+type PlanningStatus = 'planning' | 'completed' | 'failed'
+
+interface PlanningCreateResponse {
+  id: string
+  scheduler_uuid: string
+  status: PlanningStatus
+}
+
+interface PlanningCronogramaItem {
+  paciente_id: number
+  medico: string
+  slot_inicio?: number
+  hora_inicio: string
+  hora_fin: string
+  duracion?: number
+}
+
+interface PlanningBlock {
+  quirofano: string
+  turno: string
+  especialidad: string
+  utilizacion_porcentaje: number
+  cronograma: PlanningCronogramaItem[]
+}
+
+interface PlanningDay {
+  nombre: string
+  bloques: PlanningBlock[]
+}
+
+interface PlanningOutput {
+  fitness_total?: number
+  duracion_segundos?: number
+  resumen?: {
+    pacientes_programados?: number
+    pacientes_pendientes?: number
+    ids_pendientes?: number[]
+  }
+  dias?: PlanningDay[]
+}
+
+interface PlanningResponse {
+  id: string
+  scheduler_uuid: string
+  status: PlanningStatus
+  input_payload: Record<string, unknown>
+  output_payload: PlanningOutput | null
+  error_message: string | null
+  duration_seconds: number | null
+  created_at: string
+  updated_at: string
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return 'Sin programar'
 
@@ -34,12 +95,42 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value))
 }
 
+function getCurrentWeekStart() {
+  const today = new Date()
+  const day = today.getDay()
+  const diff = today.getDate() - day + (day === 0 ? -6 : 1)
+  const monday = new Date(today)
+  monday.setDate(diff)
+  return monday.toISOString().split('T')[0]
+}
+
+function getStatusLabel(status: PlanningStatus) {
+  if (status === 'planning') return 'Planificando'
+  if (status === 'completed') return 'Completada'
+  return 'Fallida'
+}
+
+function getStatusClasses(status: PlanningStatus) {
+  if (status === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
+  return 'border-blue-200 bg-blue-50 text-blue-700'
+}
+
+function getStatusIcon(status: PlanningStatus) {
+  if (status === 'completed') return <CheckCircle size={16} />
+  if (status === 'failed') return <XCircle size={16} />
+  return <Activity size={16} className="animate-pulse" />
+}
+
 export default function MvpCirugiasPage() {
   const router = useRouter()
   const { isAuthenticated, isLoading, requiresPasswordChange } = useAuth()
   const [cirugias, setCirugias] = useState<CirugiaReal[]>([])
   const [isFetching, setIsFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [planning, setPlanning] = useState<PlanningResponse | null>(null)
+  const [planningError, setPlanningError] = useState<string | null>(null)
+  const [isPlanningRequesting, setIsPlanningRequesting] = useState(false)
 
   useEffect(() => {
     if (!isLoading) {
@@ -70,6 +161,37 @@ export default function MvpCirugiasPage() {
     fetchCirugias()
   }, [isAuthenticated, requiresPasswordChange])
 
+  useEffect(() => {
+    if (!planning || planning.status !== 'planning') return
+
+    let cancelled = false
+    const schedulerUuid = planning.scheduler_uuid
+
+    async function fetchPlanning() {
+      try {
+        const data = await apiRequest<PlanningResponse>(`/planificaciones/${schedulerUuid}`)
+        if (!cancelled) {
+          setPlanning(data)
+          setPlanningError(null)
+        }
+      } catch (fetchError) {
+        if (!cancelled) {
+          setPlanningError(
+            fetchError instanceof Error ? fetchError.message : 'No se pudo consultar la planificación',
+          )
+        }
+      }
+    }
+
+    const intervalId = window.setInterval(fetchPlanning, 3000)
+    fetchPlanning()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [planning?.scheduler_uuid, planning?.status])
+
   if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -91,28 +213,205 @@ export default function MvpCirugiasPage() {
     }
   }
 
+  const refreshPlanning = async () => {
+    if (!planning) return
+    setPlanningError(null)
+    try {
+      const data = await apiRequest<PlanningResponse>(`/planificaciones/${planning.scheduler_uuid}`)
+      setPlanning(data)
+    } catch (fetchError) {
+      setPlanningError(fetchError instanceof Error ? fetchError.message : 'No se pudo consultar la planificación')
+    }
+  }
+
+  const startPlanning = async () => {
+    setIsPlanningRequesting(true)
+    setPlanningError(null)
+    try {
+      const created = await apiRequest<PlanningCreateResponse>('/planificaciones', {
+        method: 'POST',
+        body: JSON.stringify({ week_start: getCurrentWeekStart() }),
+      })
+      setPlanning({
+        id: created.id,
+        scheduler_uuid: created.scheduler_uuid,
+        status: created.status,
+        input_payload: {},
+        output_payload: null,
+        error_message: null,
+        duration_seconds: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+    } catch (planningRequestError) {
+      setPlanningError(
+        planningRequestError instanceof Error
+          ? planningRequestError.message
+          : 'No se pudo iniciar la planificación',
+      )
+    } finally {
+      setIsPlanningRequesting(false)
+    }
+  }
+
+  const planningOutput = planning?.output_payload
+  const planningDays = planningOutput?.dias ?? []
+  const visibleBlocks = planningDays.flatMap((day) =>
+    day.bloques
+      .filter((block) => block.cronograma.length > 0)
+      .map((block) => ({ day: day.nombre, ...block })),
+  )
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar activePage="lista-cirugias" navigationMode="mvp" />
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-auto">
           <div className="p-6 md:p-8">
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-foreground">Cirugías</h1>
                 <p className="text-muted-foreground mt-1">
                   MVP - Programacion de Agenda con IA. Datos reales desde PostgreSQL.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={refreshCirugias}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-              >
-                <RefreshCw size={16} />
-                Actualizar
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={startPlanning}
+                  disabled={isPlanningRequesting || planning?.status === 'planning'}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                >
+                  <Sparkles size={16} />
+                  {isPlanningRequesting || planning?.status === 'planning'
+                    ? 'Planificando...'
+                    : 'Generar planificación'}
+                </button>
+                <button
+                  type="button"
+                  onClick={refreshCirugias}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  <RefreshCw size={16} />
+                  Actualizar
+                </button>
+              </div>
             </div>
+
+            <section className="mb-6 rounded-xl border border-border bg-card p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Planificación IA</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    El resultado se guarda como JSON y queda pendiente de aprobación.
+                  </p>
+                </div>
+                {planning ? (
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${getStatusClasses(planning.status)}`}
+                  >
+                    {getStatusIcon(planning.status)}
+                    {getStatusLabel(planning.status)}
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
+                    Sin ejecución iniciada
+                  </span>
+                )}
+              </div>
+
+              {planning && (
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">UUID Scheduler</p>
+                    <p className="mt-1 truncate font-mono text-xs text-slate-900">{planning.scheduler_uuid}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">Programadas</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">
+                      {planningOutput?.resumen?.pacientes_programados ?? '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">Pendientes</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">
+                      {planningOutput?.resumen?.pacientes_pendientes ?? '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">Duración</p>
+                    <p className="mt-1 text-xl font-semibold text-slate-900">
+                      {planning.duration_seconds ?? planningOutput?.duracion_segundos ?? '-'}s
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {planningError && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {planningError}
+                </div>
+              )}
+
+              {planning?.status === 'failed' && planning.error_message && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {planning.error_message}
+                </div>
+              )}
+
+              {planning?.status === 'planning' && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-blue-700">
+                  <Clock size={16} className="animate-pulse" />
+                  Consultando estado automáticamente cada 3 segundos...
+                </div>
+              )}
+
+              {planning && planning.status !== 'planning' && (
+                <button
+                  type="button"
+                  onClick={refreshPlanning}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <RefreshCw size={14} />
+                  Actualizar planificación
+                </button>
+              )}
+
+              {visibleBlocks.length > 0 && (
+                <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                  {visibleBlocks.map((block, index) => (
+                    <div key={`${block.day}-${block.quirofano}-${block.turno}-${index}`} className="rounded-lg border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">
+                            {block.day} · {block.turno}
+                          </p>
+                          <p className="text-sm text-slate-600">
+                            {block.quirofano} · {block.especialidad}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                          {block.utilizacion_porcentaje}% uso
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {block.cronograma.map((item) => (
+                          <div key={`${block.day}-${block.quirofano}-${item.paciente_id}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-900">Paciente #{item.paciente_id}</span>
+                              <span className="text-slate-600">
+                                {item.hora_inicio} - {item.hora_fin}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">{item.medico}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
               {isFetching ? (
