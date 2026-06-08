@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   ArrowLeftRight,
+  DatabaseBackup,
   ChevronDown, 
   ChevronRight, 
   LayoutDashboard, 
@@ -20,6 +21,7 @@ import {
   UserCircle
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { apiRequest } from '@/lib/api'
 
 interface MenuItem {
   id: string
@@ -75,11 +77,27 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   const router = useRouter()
   const { user, logout } = useAuth()
   const [expanded, setExpanded] = useState<string | null>('cirugias')
+  const [isResettingDemo, setIsResettingDemo] = useState(false)
   const visibleMenuItems = navigationMode === 'mvp' ? mvpMenuItems : menuItems
 
   const handleLogout = () => {
     logout()
     router.push('/login')
+  }
+
+  const handleResetDemo = async () => {
+    const confirmed = window.confirm('Esto va a borrar la planificación actual y devolver las cirugías al estado pendiente. ¿Continuar?')
+    if (!confirmed) return
+
+    setIsResettingDemo(true)
+    try {
+      await apiRequest('/demo/reset', { method: 'POST' })
+      window.location.reload()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo restablecer la demo'
+      window.alert(message)
+      setIsResettingDemo(false)
+    }
   }
 
   const isActive = (item: MenuItem): boolean => {
@@ -167,11 +185,24 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
         <button
           type="button"
           onClick={() => router.push('/seleccionar-experiencia')}
-          className="mb-3 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+          className="mb-2 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
         >
           <ArrowLeftRight size={18} className="text-blue-600" />
           <span className="flex-1 text-left text-sm font-medium">Cambiar modo</span>
         </button>
+        {navigationMode === 'mvp' && (
+          <button
+            type="button"
+            onClick={handleResetDemo}
+            disabled={isResettingDemo}
+            className="mb-3 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-700 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:text-red-300"
+          >
+            <DatabaseBackup size={18} className="text-red-600" />
+            <span className="flex-1 text-left text-sm font-medium">
+              {isResettingDemo ? 'Restableciendo...' : 'Restablecer demo'}
+            </span>
+          </button>
+        )}
         <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white">
             <User size={18} />

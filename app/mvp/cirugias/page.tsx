@@ -13,6 +13,14 @@ import {
   XCircle,
 } from 'lucide-react'
 import Sidebar from '@/components/sidebar'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 
@@ -149,10 +157,6 @@ function reverseMap(map?: Record<string, number>) {
   return Object.fromEntries(Object.entries(map ?? {}).map(([key, value]) => [value, key])) as Record<number, string>
 }
 
-function formatDuration(value: number | null | undefined) {
-  if (typeof value !== 'number') return '-'
-  return `${value.toFixed(value >= 10 ? 0 : 1)}s`
-}
 
 export default function MvpCirugiasPage() {
   const router = useRouter()
@@ -165,6 +169,8 @@ export default function MvpCirugiasPage() {
   const [isPlanningRequesting, setIsPlanningRequesting] = useState(false)
   const [isDeletingPlanning, setIsDeletingPlanning] = useState(false)
   const [isApprovingPlanning, setIsApprovingPlanning] = useState(false)
+  const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false)
+  const [showPendingOutside, setShowPendingOutside] = useState(false)
 
   useEffect(() => {
     if (!isLoading) {
@@ -246,6 +252,7 @@ export default function MvpCirugiasPage() {
       })
       const data = await apiRequest<PlanningResponse>(`/planificaciones/${created.scheduler_uuid}`)
       setPlanning(data)
+      setIsPlanningModalOpen(true)
     } catch (planningRequestError) {
       setPlanningError(
         planningRequestError instanceof Error
@@ -304,6 +311,7 @@ export default function MvpCirugiasPage() {
     .map((schedulerId) => cirugiasById[surgeryIdBySchedulerId[schedulerId]])
     .filter(Boolean)
   const progress = Math.max(0, Math.min(100, planning?.progress_percentage ?? 0))
+  const pendingCirugiasCount = cirugias.filter((cirugia) => cirugia.estado === 'Pendiente').length
   const canApprove = user?.rol === 'Cirujano' && planning?.status === 'completed'
 
   if (isLoading || !isAuthenticated) {
@@ -330,26 +338,12 @@ export default function MvpCirugiasPage() {
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={startPlanning}
-                  disabled={isPlanningRequesting || planning?.status === 'planning'}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                  onClick={() => setIsPlanningModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                 >
                   <Sparkles size={16} />
-                  {isPlanningRequesting || planning?.status === 'planning'
-                    ? 'Planificando...'
-                    : 'Generar planificación'}
+                  Generar planificación
                 </button>
-                {planning && (
-                  <button
-                    type="button"
-                    onClick={deletePlanning}
-                    disabled={isDeletingPlanning || planning.status === 'planning'}
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
-                  >
-                    <Trash2 size={16} />
-                    {isDeletingPlanning ? 'Eliminando...' : 'Eliminar planificación'}
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={refreshCirugias}
@@ -361,58 +355,52 @@ export default function MvpCirugiasPage() {
               </div>
             </div>
 
-            <section className="mb-6 rounded-xl border border-border bg-card p-5 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Planificación IA</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    El resultado se guarda como JSON y queda pendiente de aprobación del cirujano.
-                  </p>
-                </div>
-                {planning ? (
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${getStatusClasses(planning.status)}`}
-                  >
-                    {getStatusIcon(planning.status)}
-                    {getStatusLabel(planning.status)}
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
-                    Sin ejecución iniciada
-                  </span>
-                )}
-              </div>
+            <Dialog open={isPlanningModalOpen} onOpenChange={setIsPlanningModalOpen}>
+              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[min(1380px,calc(100vw-2rem))]">
+                <DialogHeader>
+                  <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
+                    <div>
+                      <DialogTitle>Generar planificación semanal</DialogTitle>
+                      <DialogDescription>
+                        {pendingCirugiasCount} cirugías pendientes para planificar esta semana.
+                      </DialogDescription>
+                    </div>
+                    {planning ? (
+                      <span
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${getStatusClasses(planning.status)}`}
+                      >
+                        {getStatusIcon(planning.status)}
+                        {getStatusLabel(planning.status)}
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
+                        Sin ejecución iniciada
+                      </span>
+                    )}
+                  </div>
+                </DialogHeader>
 
-              {planning && (
-                <>
-                  <div className="mt-4 grid gap-3 md:grid-cols-5">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2">
-                      <p className="text-xs font-medium uppercase text-slate-500">UUID Scheduler</p>
-                      <p className="mt-1 truncate font-mono text-xs text-slate-900">{planning.scheduler_uuid}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-medium uppercase text-slate-500">Programadas</p>
-                      <p className="mt-1 text-xl font-semibold text-slate-900">
-                        {planningOutput?.resumen?.pacientes_programados ?? '-'}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-medium uppercase text-slate-500">Pendientes</p>
-                      <p className="mt-1 text-xl font-semibold text-slate-900">
-                        {planningOutput?.resumen?.pacientes_pendientes ?? '-'}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-medium uppercase text-slate-500">Duración</p>
-                      <p className="mt-1 text-xl font-semibold text-slate-900">
-                        {formatDuration(planning.duration_seconds ?? planningOutput?.duracion_segundos)}
-                      </p>
+                {!planning && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-lg bg-white p-4 shadow-sm">
+                        <p className="text-xs font-medium uppercase text-slate-500">Pendientes</p>
+                        <p className="mt-1 text-3xl font-semibold text-slate-900">{pendingCirugiasCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-white p-4 shadow-sm md:col-span-2">
+                        <p className="text-sm font-medium text-slate-900">Planificación semanal</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Generá una propuesta automática para organizar quirófanos, turnos y equipos disponibles.
+                        </p>
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  <div className="mt-4">
+                {planning?.status === 'planning' && (
+                  <div>
                     <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-700">Progreso del algoritmo</span>
+                      <span className="font-medium text-slate-700">Progreso</span>
                       <span className="font-semibold text-slate-900">{progress}%</span>
                     </div>
                     <div className="h-3 overflow-hidden rounded-full bg-slate-100">
@@ -422,128 +410,167 @@ export default function MvpCirugiasPage() {
                       />
                     </div>
                   </div>
-                </>
-              )}
+                )}
 
-              {planningError && (
-                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {planningError}
-                </div>
-              )}
-
-              {planning?.status === 'failed' && planning.error_message && (
-                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {planning.error_message}
-                </div>
-              )}
-
-              {planning?.status === 'planning' && (
-                <div className="mt-4 flex items-center gap-2 text-sm text-blue-700">
-                  <Clock size={16} className="animate-pulse" />
-                  Consultando progreso automáticamente cada pocos segundos...
-                </div>
-              )}
-
-              {planning && planning.status !== 'planning' && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={refreshPlanning}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                  >
-                    <RefreshCw size={14} />
-                    Actualizar planificación
-                  </button>
-                  {user?.rol === 'Cirujano' && (
-                    <button
-                      type="button"
-                      onClick={approvePlanning}
-                      disabled={!canApprove || isApprovingPlanning}
-                      className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
-                    >
-                      <CheckCircle size={14} />
-                      {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {planningDays.length > 0 && (
-                <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_280px]">
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
-                    <div className="grid min-w-[980px] grid-cols-5 divide-x divide-slate-200">
-                      {planningDays.map((day) => (
-                        <div key={day.nombre} className="bg-white">
-                          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-sm font-semibold text-slate-900">{day.nombre}</p>
-                          </div>
-                          <div className="space-y-3 p-3">
-                            {day.bloques
-                              .filter((block) => block.cronograma.length > 0)
-                              .map((block, blockIndex) => (
-                                <div key={`${day.nombre}-${block.quirofano}-${block.turno}-${blockIndex}`} className="rounded-lg border border-slate-200 p-3">
-                                  <div className="mb-2 flex items-start justify-between gap-2">
-                                    <div>
-                                      <p className="text-sm font-semibold text-slate-900">{block.turno}</p>
-                                      <p className="text-xs text-slate-600">{block.quirofano}</p>
-                                      <p className="text-xs text-slate-500">{block.especialidad}</p>
-                                    </div>
-                                    <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700">
-                                      {block.utilizacion_porcentaje}%
-                                    </span>
-                                  </div>
-                                  <div className="space-y-2">
-                                    {block.cronograma.map((item) => {
-                                      const cirugia = cirugiasById[surgeryIdBySchedulerId[item.paciente_id]]
-                                      return (
-                                        <div key={`${block.quirofano}-${item.paciente_id}`} className="rounded-md bg-slate-50 px-2 py-2 text-xs">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className="font-semibold text-slate-900">
-                                              {item.hora_inicio} - {item.hora_fin}
-                                            </span>
-                                            <span className="text-slate-500">{item.duracion ?? '-'} min</span>
-                                          </div>
-                                          <p className="mt-1 font-medium text-slate-900">
-                                            {cirugia?.paciente ?? `Cirugía #${item.paciente_id}`}
-                                          </p>
-                                          <p className="text-slate-600">{item.medico}</p>
-                                          <p className="text-slate-500">{cirugia?.intervenciones.join(', ') ?? block.especialidad}</p>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                </div>
-                              ))}
-                            {day.bloques.every((block) => block.cronograma.length === 0) && (
-                              <p className="py-6 text-center text-xs text-slate-400">Sin cirugías asignadas</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                {planningError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {planningError}
                   </div>
-                  <aside className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <h3 className="font-semibold text-amber-950">Quedan fuera</h3>
-                    <p className="mt-1 text-xs text-amber-700">
-                      Cirugías que el algoritmo no pudo ubicar en la semana propuesta.
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      {pendingSurgeries.length > 0 ? pendingSurgeries.map((cirugia) => (
-                        <div key={cirugia.id} className="rounded-md bg-white px-3 py-2 text-sm shadow-sm">
-                          <p className="font-medium text-slate-900">{cirugia.paciente}</p>
-                          <p className="text-xs text-slate-600">{cirugia.especialidad}</p>
-                          <p className="text-xs text-slate-500">{cirugia.intervenciones.join(', ')}</p>
+                )}
+
+                {planning?.status === 'failed' && planning.error_message && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {planning.error_message}
+                  </div>
+                )}
+
+                {planning?.status === 'planning' && (
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                    <Clock size={16} className="animate-pulse" />
+                    Calculando propuesta semanal...
+                  </div>
+                )}
+
+                {planningDays.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <div className="grid min-w-[1180px] grid-cols-5 divide-x divide-slate-200">
+                        {planningDays.map((day) => (
+                          <div key={day.nombre} className="bg-white">
+                            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
+                              <p className="text-sm font-semibold text-slate-900">{day.nombre}</p>
+                            </div>
+                            <div className="space-y-3 p-3">
+                              {day.bloques
+                                .filter((block) => block.cronograma.length > 0)
+                                .map((block, blockIndex) => (
+                                  <div key={`${day.nombre}-${block.quirofano}-${block.turno}-${blockIndex}`} className="rounded-lg border border-slate-200 p-3">
+                                    <div className="mb-2 flex items-start justify-between gap-2">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-900">{block.turno}</p>
+                                        <p className="text-xs text-slate-600">{block.quirofano}</p>
+                                        <p className="text-xs text-slate-500">{block.especialidad}</p>
+                                      </div>
+                                      <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700">
+                                        {block.utilizacion_porcentaje}%
+                                      </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {block.cronograma.map((item) => {
+                                        const cirugia = cirugiasById[surgeryIdBySchedulerId[item.paciente_id]]
+                                        return (
+                                          <div key={`${block.quirofano}-${item.paciente_id}`} className="rounded-md bg-slate-50 px-2 py-2 text-xs">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <span className="font-semibold text-slate-900">
+                                                {item.hora_inicio} - {item.hora_fin}
+                                              </span>
+                                              <span className="text-slate-500">{item.duracion ?? '-'} min</span>
+                                            </div>
+                                            <p className="mt-1 font-medium text-slate-900">
+                                              {cirugia?.paciente ?? `Cirugía #${item.paciente_id}`}
+                                            </p>
+                                            <p className="text-slate-600">{item.medico}</p>
+                                            <p className="text-slate-500">{cirugia?.intervenciones.join(', ') ?? block.especialidad}</p>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              {day.bloques.every((block) => block.cronograma.length === 0) && (
+                                <p className="py-6 text-center text-xs text-slate-400">Sin cirugías asignadas</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowPendingOutside((value) => !value)}
+                        className="flex w-full items-center justify-between gap-3 text-left"
+                      >
+                        <div>
+                          <h3 className="font-semibold text-amber-950">{pendingSurgeries.length} quedan afuera</h3>
+                          <p className="mt-1 text-xs text-amber-700">
+                            Tocá para {showPendingOutside ? 'ocultar' : 'ver'} las cirugías no incluidas en esta propuesta.
+                          </p>
                         </div>
-                      )) : (
-                        <p className="rounded-md bg-white px-3 py-4 text-center text-sm text-slate-500 shadow-sm">
-                          No hay pendientes en esta propuesta.
-                        </p>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-800 shadow-sm">
+                          {showPendingOutside ? 'Ocultar' : 'Ver detalle'}
+                        </span>
+                      </button>
+                      {showPendingOutside && (
+                        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                          {pendingSurgeries.length > 0 ? pendingSurgeries.map((cirugia) => (
+                            <div key={cirugia.id} className="rounded-md bg-white px-3 py-2 text-sm shadow-sm">
+                              <p className="font-medium text-slate-900">{cirugia.paciente}</p>
+                              <p className="text-xs text-slate-600">{cirugia.especialidad}</p>
+                              <p className="text-xs text-slate-500">{cirugia.intervenciones.join(', ')}</p>
+                            </div>
+                          )) : (
+                            <p className="rounded-md bg-white px-3 py-4 text-center text-sm text-slate-500 shadow-sm">
+                              Todas las cirugías pendientes entran en la propuesta.
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </aside>
-                </div>
-              )}
-            </section>
+                  </div>
+                )}
+
+                <DialogFooter className="items-center sm:justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    {planning && (
+                      <button
+                        type="button"
+                        onClick={deletePlanning}
+                        disabled={isDeletingPlanning || planning.status === 'planning'}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
+                      >
+                        <Trash2 size={14} />
+                        {isDeletingPlanning ? 'Eliminando...' : 'Eliminar planificación'}
+                      </button>
+                    )}
+                    {planning && planning.status !== 'planning' && (
+                      <button
+                        type="button"
+                        onClick={refreshPlanning}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                      >
+                        <RefreshCw size={14} />
+                        Actualizar
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {user?.rol === 'Cirujano' && planning && (
+                      <button
+                        type="button"
+                        onClick={approvePlanning}
+                        disabled={!canApprove || isApprovingPlanning}
+                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
+                      >
+                        <CheckCircle size={14} />
+                        {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={startPlanning}
+                      disabled={isPlanningRequesting || planning?.status === 'planning'}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                    >
+                      <Sparkles size={16} />
+                      {isPlanningRequesting || planning?.status === 'planning'
+                        ? 'Planificando...'
+                        : 'Generar planificación semanal'}
+                    </button>
+                  </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
               {isFetching ? (
