@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
@@ -9,6 +9,7 @@ import {
   Clock,
   RefreshCw,
   Sparkles,
+  Trash2,
   XCircle,
 } from 'lucide-react'
 import Sidebar from '@/components/sidebar'
@@ -33,12 +34,29 @@ interface CirugiaReal {
   observaciones: string | null
 }
 
-type PlanningStatus = 'planning' | 'completed' | 'failed'
+type PlanningStatus = 'planning' | 'completed' | 'failed' | 'approved'
 
 interface PlanningCreateResponse {
   id: string
   scheduler_uuid: string
   status: PlanningStatus
+}
+
+interface SchedulerSurgeryPayload {
+  id: number
+  source_id?: string
+  specialty_id: number
+  procedure_id: number
+  estimated_duration: number
+  clinical_priority: number
+}
+
+interface PlanningInputPayload {
+  week_start?: string
+  pending_surgeries?: SchedulerSurgeryPayload[]
+  id_maps?: {
+    surgeries?: Record<string, number>
+  }
 }
 
 interface PlanningCronogramaItem {
@@ -78,10 +96,13 @@ interface PlanningResponse {
   id: string
   scheduler_uuid: string
   status: PlanningStatus
-  input_payload: Record<string, unknown>
+  input_payload: PlanningInputPayload
   output_payload: PlanningOutput | null
   error_message: string | null
+  progress_percentage: number
   duration_seconds: number | null
+  approved_at: string | null
+  approved_by: string | null
   created_at: string
   updated_at: string
 }
@@ -106,31 +127,44 @@ function getCurrentWeekStart() {
 
 function getStatusLabel(status: PlanningStatus) {
   if (status === 'planning') return 'Planificando'
-  if (status === 'completed') return 'Completada'
+  if (status === 'completed') return 'Lista para aprobar'
+  if (status === 'approved') return 'Aprobada'
   return 'Fallida'
 }
 
 function getStatusClasses(status: PlanningStatus) {
+  if (status === 'approved') return 'border-purple-200 bg-purple-50 text-purple-700'
   if (status === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
   if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
   return 'border-blue-200 bg-blue-50 text-blue-700'
 }
 
 function getStatusIcon(status: PlanningStatus) {
-  if (status === 'completed') return <CheckCircle size={16} />
+  if (status === 'approved' || status === 'completed') return <CheckCircle size={16} />
   if (status === 'failed') return <XCircle size={16} />
   return <Activity size={16} className="animate-pulse" />
 }
 
+function reverseMap(map?: Record<string, number>) {
+  return Object.fromEntries(Object.entries(map ?? {}).map(([key, value]) => [value, key])) as Record<number, string>
+}
+
+function formatDuration(value: number | null | undefined) {
+  if (typeof value !== 'number') return '-'
+  return `${value.toFixed(value >= 10 ? 0 : 1)}s`
+}
+
 export default function MvpCirugiasPage() {
   const router = useRouter()
-  const { isAuthenticated, isLoading, requiresPasswordChange } = useAuth()
+  const { isAuthenticated, isLoading, requiresPasswordChange, user } = useAuth()
   const [cirugias, setCirugias] = useState<CirugiaReal[]>([])
   const [isFetching, setIsFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [planning, setPlanning] = useState<PlanningResponse | null>(null)
   const [planningError, setPlanningError] = useState<string | null>(null)
   const [isPlanningRequesting, setIsPlanningRequesting] = useState(false)
+  const [isDeletingPlanning, setIsDeletingPlanning] = useState(false)
+  const [isApprovingPlanning, setIsApprovingPlanning] = useState(false)
 
   useEffect(() => {
     if (!isLoading) {
@@ -142,23 +176,22 @@ export default function MvpCirugiasPage() {
     }
   }, [isAuthenticated, isLoading, requiresPasswordChange, router])
 
+  const refreshCirugias = async () => {
+    setIsFetching(true)
+    setError(null)
+    try {
+      const data = await apiRequest<CirugiaReal[]>('/cirugias')
+      setCirugias(data)
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar las cirugías')
+    } finally {
+      setIsFetching(false)
+    }
+  }
+
   useEffect(() => {
     if (!isAuthenticated || requiresPasswordChange) return
-
-    async function fetchCirugias() {
-      setIsFetching(true)
-      setError(null)
-      try {
-        const data = await apiRequest<CirugiaReal[]>('/cirugias')
-        setCirugias(data)
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar las cirugías')
-      } finally {
-        setIsFetching(false)
-      }
-    }
-
-    fetchCirugias()
+    refreshCirugias()
   }, [isAuthenticated, requiresPasswordChange])
 
   useEffect(() => {
@@ -183,7 +216,7 @@ export default function MvpCirugiasPage() {
       }
     }
 
-    const intervalId = window.setInterval(fetchPlanning, 3000)
+    const intervalId = window.setInterval(fetchPlanning, 2500)
     fetchPlanning()
 
     return () => {
@@ -191,27 +224,6 @@ export default function MvpCirugiasPage() {
       window.clearInterval(intervalId)
     }
   }, [planning?.scheduler_uuid, planning?.status])
-
-  if (isLoading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground">Cargando...</div>
-      </div>
-    )
-  }
-
-  const refreshCirugias = async () => {
-    setIsFetching(true)
-    setError(null)
-    try {
-      const data = await apiRequest<CirugiaReal[]>('/cirugias')
-      setCirugias(data)
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar las cirugías')
-    } finally {
-      setIsFetching(false)
-    }
-  }
 
   const refreshPlanning = async () => {
     if (!planning) return
@@ -232,17 +244,8 @@ export default function MvpCirugiasPage() {
         method: 'POST',
         body: JSON.stringify({ week_start: getCurrentWeekStart() }),
       })
-      setPlanning({
-        id: created.id,
-        scheduler_uuid: created.scheduler_uuid,
-        status: created.status,
-        input_payload: {},
-        output_payload: null,
-        error_message: null,
-        duration_seconds: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      const data = await apiRequest<PlanningResponse>(`/planificaciones/${created.scheduler_uuid}`)
+      setPlanning(data)
     } catch (planningRequestError) {
       setPlanningError(
         planningRequestError instanceof Error
@@ -254,13 +257,62 @@ export default function MvpCirugiasPage() {
     }
   }
 
+  const deletePlanning = async () => {
+    if (!planning) return
+    setIsDeletingPlanning(true)
+    setPlanningError(null)
+    try {
+      await apiRequest<void>(`/planificaciones/${planning.scheduler_uuid}`, { method: 'DELETE' })
+      setPlanning(null)
+    } catch (deleteError) {
+      setPlanningError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar la planificación')
+    } finally {
+      setIsDeletingPlanning(false)
+    }
+  }
+
+  const approvePlanning = async () => {
+    if (!planning) return
+    setIsApprovingPlanning(true)
+    setPlanningError(null)
+    try {
+      const data = await apiRequest<PlanningResponse>(`/planificaciones/${planning.scheduler_uuid}/aprobar`, {
+        method: 'POST',
+        body: JSON.stringify({ approved_by: user?.email ?? user?.nombre ?? 'Cirujano demo' }),
+      })
+      setPlanning(data)
+      await refreshCirugias()
+    } catch (approvalError) {
+      setPlanningError(approvalError instanceof Error ? approvalError.message : 'No se pudo aprobar la planificación')
+    } finally {
+      setIsApprovingPlanning(false)
+    }
+  }
+
   const planningOutput = planning?.output_payload
   const planningDays = planningOutput?.dias ?? []
-  const visibleBlocks = planningDays.flatMap((day) =>
-    day.bloques
-      .filter((block) => block.cronograma.length > 0)
-      .map((block) => ({ day: day.nombre, ...block })),
+  const surgeryIdBySchedulerId = useMemo(
+    () => reverseMap(planning?.input_payload?.id_maps?.surgeries),
+    [planning?.input_payload?.id_maps?.surgeries],
   )
+  const cirugiasById = useMemo(
+    () => Object.fromEntries(cirugias.map((cirugia) => [cirugia.id, cirugia])),
+    [cirugias],
+  )
+  const pendingScheduledIds = planningOutput?.resumen?.ids_pendientes ?? []
+  const pendingSurgeries = pendingScheduledIds
+    .map((schedulerId) => cirugiasById[surgeryIdBySchedulerId[schedulerId]])
+    .filter(Boolean)
+  const progress = Math.max(0, Math.min(100, planning?.progress_percentage ?? 0))
+  const canApprove = user?.rol === 'Cirujano' && planning?.status === 'completed'
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground">Cargando...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -287,6 +339,17 @@ export default function MvpCirugiasPage() {
                     ? 'Planificando...'
                     : 'Generar planificación'}
                 </button>
+                {planning && (
+                  <button
+                    type="button"
+                    onClick={deletePlanning}
+                    disabled={isDeletingPlanning || planning.status === 'planning'}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
+                  >
+                    <Trash2 size={16} />
+                    {isDeletingPlanning ? 'Eliminando...' : 'Eliminar planificación'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={refreshCirugias}
@@ -303,7 +366,7 @@ export default function MvpCirugiasPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-foreground">Planificación IA</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    El resultado se guarda como JSON y queda pendiente de aprobación.
+                    El resultado se guarda como JSON y queda pendiente de aprobación del cirujano.
                   </p>
                 </div>
                 {planning ? (
@@ -321,30 +384,45 @@ export default function MvpCirugiasPage() {
               </div>
 
               {planning && (
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">UUID Scheduler</p>
-                    <p className="mt-1 truncate font-mono text-xs text-slate-900">{planning.scheduler_uuid}</p>
+                <>
+                  <div className="mt-4 grid gap-3 md:grid-cols-5">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+                      <p className="text-xs font-medium uppercase text-slate-500">UUID Scheduler</p>
+                      <p className="mt-1 truncate font-mono text-xs text-slate-900">{planning.scheduler_uuid}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-medium uppercase text-slate-500">Programadas</p>
+                      <p className="mt-1 text-xl font-semibold text-slate-900">
+                        {planningOutput?.resumen?.pacientes_programados ?? '-'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-medium uppercase text-slate-500">Pendientes</p>
+                      <p className="mt-1 text-xl font-semibold text-slate-900">
+                        {planningOutput?.resumen?.pacientes_pendientes ?? '-'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-medium uppercase text-slate-500">Duración</p>
+                      <p className="mt-1 text-xl font-semibold text-slate-900">
+                        {formatDuration(planning.duration_seconds ?? planningOutput?.duracion_segundos)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">Programadas</p>
-                    <p className="mt-1 text-xl font-semibold text-slate-900">
-                      {planningOutput?.resumen?.pacientes_programados ?? '-'}
-                    </p>
+
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-medium text-slate-700">Progreso del algoritmo</span>
+                      <span className="font-semibold text-slate-900">{progress}%</span>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">Pendientes</p>
-                    <p className="mt-1 text-xl font-semibold text-slate-900">
-                      {planningOutput?.resumen?.pacientes_pendientes ?? '-'}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">Duración</p>
-                    <p className="mt-1 text-xl font-semibold text-slate-900">
-                      {planning.duration_seconds ?? planningOutput?.duracion_segundos ?? '-'}s
-                    </p>
-                  </div>
-                </div>
+                </>
               )}
 
               {planningError && (
@@ -362,53 +440,107 @@ export default function MvpCirugiasPage() {
               {planning?.status === 'planning' && (
                 <div className="mt-4 flex items-center gap-2 text-sm text-blue-700">
                   <Clock size={16} className="animate-pulse" />
-                  Consultando estado automáticamente cada 3 segundos...
+                  Consultando progreso automáticamente cada pocos segundos...
                 </div>
               )}
 
               {planning && planning.status !== 'planning' && (
-                <button
-                  type="button"
-                  onClick={refreshPlanning}
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  <RefreshCw size={14} />
-                  Actualizar planificación
-                </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={refreshPlanning}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <RefreshCw size={14} />
+                    Actualizar planificación
+                  </button>
+                  {user?.rol === 'Cirujano' && (
+                    <button
+                      type="button"
+                      onClick={approvePlanning}
+                      disabled={!canApprove || isApprovingPlanning}
+                      className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
+                    >
+                      <CheckCircle size={14} />
+                      {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
+                    </button>
+                  )}
+                </div>
               )}
 
-              {visibleBlocks.length > 0 && (
-                <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                  {visibleBlocks.map((block, index) => (
-                    <div key={`${block.day}-${block.quirofano}-${block.turno}-${index}`} className="rounded-lg border border-slate-200 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">
-                            {block.day} · {block.turno}
-                          </p>
-                          <p className="text-sm text-slate-600">
-                            {block.quirofano} · {block.especialidad}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                          {block.utilizacion_porcentaje}% uso
-                        </span>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {block.cronograma.map((item) => (
-                          <div key={`${block.day}-${block.quirofano}-${item.paciente_id}`} className="rounded-md bg-slate-50 px-3 py-2 text-sm">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-slate-900">Paciente #{item.paciente_id}</span>
-                              <span className="text-slate-600">
-                                {item.hora_inicio} - {item.hora_fin}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-xs text-slate-500">{item.medico}</p>
+              {planningDays.length > 0 && (
+                <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_280px]">
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <div className="grid min-w-[980px] grid-cols-5 divide-x divide-slate-200">
+                      {planningDays.map((day) => (
+                        <div key={day.nombre} className="bg-white">
+                          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-sm font-semibold text-slate-900">{day.nombre}</p>
                           </div>
-                        ))}
-                      </div>
+                          <div className="space-y-3 p-3">
+                            {day.bloques
+                              .filter((block) => block.cronograma.length > 0)
+                              .map((block, blockIndex) => (
+                                <div key={`${day.nombre}-${block.quirofano}-${block.turno}-${blockIndex}`} className="rounded-lg border border-slate-200 p-3">
+                                  <div className="mb-2 flex items-start justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-semibold text-slate-900">{block.turno}</p>
+                                      <p className="text-xs text-slate-600">{block.quirofano}</p>
+                                      <p className="text-xs text-slate-500">{block.especialidad}</p>
+                                    </div>
+                                    <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700">
+                                      {block.utilizacion_porcentaje}%
+                                    </span>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {block.cronograma.map((item) => {
+                                      const cirugia = cirugiasById[surgeryIdBySchedulerId[item.paciente_id]]
+                                      return (
+                                        <div key={`${block.quirofano}-${item.paciente_id}`} className="rounded-md bg-slate-50 px-2 py-2 text-xs">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-slate-900">
+                                              {item.hora_inicio} - {item.hora_fin}
+                                            </span>
+                                            <span className="text-slate-500">{item.duracion ?? '-'} min</span>
+                                          </div>
+                                          <p className="mt-1 font-medium text-slate-900">
+                                            {cirugia?.paciente ?? `Cirugía #${item.paciente_id}`}
+                                          </p>
+                                          <p className="text-slate-600">{item.medico}</p>
+                                          <p className="text-slate-500">{cirugia?.intervenciones.join(', ') ?? block.especialidad}</p>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            {day.bloques.every((block) => block.cronograma.length === 0) && (
+                              <p className="py-6 text-center text-xs text-slate-400">Sin cirugías asignadas</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  <aside className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <h3 className="font-semibold text-amber-950">Quedan fuera</h3>
+                    <p className="mt-1 text-xs text-amber-700">
+                      Cirugías que el algoritmo no pudo ubicar en la semana propuesta.
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {pendingSurgeries.length > 0 ? pendingSurgeries.map((cirugia) => (
+                        <div key={cirugia.id} className="rounded-md bg-white px-3 py-2 text-sm shadow-sm">
+                          <p className="font-medium text-slate-900">{cirugia.paciente}</p>
+                          <p className="text-xs text-slate-600">{cirugia.especialidad}</p>
+                          <p className="text-xs text-slate-500">{cirugia.intervenciones.join(', ')}</p>
+                        </div>
+                      )) : (
+                        <p className="rounded-md bg-white px-3 py-4 text-center text-sm text-slate-500 shadow-sm">
+                          No hay pendientes en esta propuesta.
+                        </p>
+                      )}
+                    </div>
+                  </aside>
                 </div>
               )}
             </section>
