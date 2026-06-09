@@ -34,5 +34,5 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
 EXPOSE 3000
 
-CMD ["pnpm", "start", "--", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["pnpm", "exec", "next", "start", "--hostname", "0.0.0.0", "--port", "3000"]
 
