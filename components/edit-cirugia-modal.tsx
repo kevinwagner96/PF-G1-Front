@@ -1,21 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-
-interface Cirugia {
-  id: string
-  fecha: string
-  hora: string
-  paciente: string
-  prioridad: 'Normal' | 'Urgente' | 'Emergencia'
-  servicio: string
-  sala: string
-  especialidad: string
-  intervencion: string
-  anestesia: string
-  cirujano: string
-  estado: 'Programada' | 'En Curso' | 'Completada' | 'Cancelada'
-  quirofano: string
-}
+import type { Cirugia } from '@/lib/mock-data'
 
 export default function EditCirugia({ 
   cirugia, 
@@ -105,8 +90,9 @@ export default function EditCirugia({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
-                <option>Normal</option>
-                <option>Urgente</option>
+                <option>Baja</option>
+                <option>Media</option>
+                <option>Alta</option>
                 <option>Emergencia</option>
               </select>
             </div>
@@ -114,8 +100,8 @@ export default function EditCirugia({
             <div>
               <label className="block text-sm font-semibold text-muted-foreground mb-2">Sala</label>
               <select
-                name="sala"
-                value={formData.sala}
+                name="quirofano"
+                value={formData.quirofano}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               >

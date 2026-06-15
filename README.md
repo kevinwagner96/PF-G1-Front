@@ -58,15 +58,17 @@ http://localhost:3000
 
 ## Ejecucion con Docker
 
-El compose principal esta en el repo backend (`PF-G1-Back`) y espera que ambos repos esten como carpetas hermanas:
+El compose principal esta en el repo `PF-G1-Demo` y espera que los proyectos esten como carpetas hermanas:
 
 ```text
 proyecto_final_workspace/
-  PF-G1-Back/
+  PF-G1-Demo/
+  PF-G1-Back-Django/
   PF-G1-Front/
+  pf-or-scheduler/
 ```
 
-Desde `PF-G1-Back`:
+Desde `PF-G1-Demo`:
 
 ```bash
 docker compose up --build
@@ -80,7 +82,7 @@ http://localhost:3000
 
 ## Conexion con backend
 
-El login consume la API REST del backend. Para desarrollo local:
+El login y el MVP consumen la API REST de `PF-G1-Back-Django`. Para desarrollo local:
 
 ```bash
 cp .env.local.example .env.local
@@ -133,8 +135,8 @@ styles/       Estilos globales adicionales
 
 ## Notas
 
-- El proyecto conserva datos mock para las pantallas funcionales, pero el login ya consulta al backend.
-- La sesion autenticada se conserva del lado del navegador con `localStorage`.
+- El proyecto conserva datos mock para pantallas no MVP; `/mvp/cirugias` consume datos reales del Back Django.
+- La sesion autenticada usa cookies de sesion Django y CSRF.
 - El archivo `next.config.mjs` ignora errores de TypeScript durante el build. Antes de una entrega final conviene revisar y corregir esos errores si aparecen.
 - En produccion se incluye Vercel Analytics.
 

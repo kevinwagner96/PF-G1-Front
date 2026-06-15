@@ -1,20 +1,5 @@
 import { X } from 'lucide-react'
-
-interface Cirugia {
-  id: string
-  fecha: string
-  hora: string
-  paciente: string
-  prioridad: 'Normal' | 'Urgente' | 'Emergencia'
-  servicio: string
-  sala: string
-  especialidad: string
-  intervencion: string
-  anestesia: string
-  cirujano: string
-  estado: 'Programada' | 'En Curso' | 'Completada' | 'Cancelada'
-  quirofano: string
-}
+import type { Cirugia } from '@/lib/mock-data'
 
 export default function ViewCirugia({ cirugia, onClose }: { cirugia: Cirugia; onClose: () => void }) {
   return (
@@ -51,7 +36,7 @@ export default function ViewCirugia({ cirugia, onClose }: { cirugia: Cirugia; on
             </div>
             <div>
               <label className="text-sm font-semibold text-muted-foreground">Sala</label>
-              <p className="text-lg text-foreground">{cirugia.sala}</p>
+              <p className="text-lg text-foreground">{cirugia.quirofano}</p>
             </div>
             <div>
               <label className="text-sm font-semibold text-muted-foreground">Especialidad</label>

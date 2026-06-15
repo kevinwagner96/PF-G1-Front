@@ -186,7 +186,7 @@ export default function MvpCirugiasPage() {
     setIsFetching(true)
     setError(null)
     try {
-      const data = await apiRequest<CirugiaReal[]>('/cirugias')
+      const data = await apiRequest<CirugiaReal[]>('/surgeries/')
       setCirugias(data)
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar las cirugías')
@@ -208,7 +208,7 @@ export default function MvpCirugiasPage() {
 
     async function fetchPlanning() {
       try {
-        const data = await apiRequest<PlanningResponse>(`/planificaciones/${schedulerUuid}`)
+        const data = await apiRequest<PlanningResponse>(`/plannings/${schedulerUuid}/`)
         if (!cancelled) {
           setPlanning(data)
           setPlanningError(null)
@@ -235,7 +235,7 @@ export default function MvpCirugiasPage() {
     if (!planning) return
     setPlanningError(null)
     try {
-      const data = await apiRequest<PlanningResponse>(`/planificaciones/${planning.scheduler_uuid}`)
+      const data = await apiRequest<PlanningResponse>(`/plannings/${planning.scheduler_uuid}/`)
       setPlanning(data)
     } catch (fetchError) {
       setPlanningError(fetchError instanceof Error ? fetchError.message : 'No se pudo consultar la planificación')
@@ -246,11 +246,11 @@ export default function MvpCirugiasPage() {
     setIsPlanningRequesting(true)
     setPlanningError(null)
     try {
-      const created = await apiRequest<PlanningCreateResponse>('/planificaciones', {
+      const created = await apiRequest<PlanningCreateResponse>('/plannings/', {
         method: 'POST',
         body: JSON.stringify({ week_start: getCurrentWeekStart() }),
       })
-      const data = await apiRequest<PlanningResponse>(`/planificaciones/${created.scheduler_uuid}`)
+      const data = await apiRequest<PlanningResponse>(`/plannings/${created.scheduler_uuid}/`)
       setPlanning(data)
       setIsPlanningModalOpen(true)
     } catch (planningRequestError) {
@@ -269,7 +269,7 @@ export default function MvpCirugiasPage() {
     setIsDeletingPlanning(true)
     setPlanningError(null)
     try {
-      await apiRequest<void>(`/planificaciones/${planning.scheduler_uuid}`, { method: 'DELETE' })
+      await apiRequest<void>(`/plannings/${planning.scheduler_uuid}/`, { method: 'DELETE' })
       setPlanning(null)
     } catch (deleteError) {
       setPlanningError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar la planificación')
@@ -283,9 +283,9 @@ export default function MvpCirugiasPage() {
     setIsApprovingPlanning(true)
     setPlanningError(null)
     try {
-      const data = await apiRequest<PlanningResponse>(`/planificaciones/${planning.scheduler_uuid}/aprobar`, {
+      const data = await apiRequest<PlanningResponse>(`/plannings/${planning.scheduler_uuid}/approve/`, {
         method: 'POST',
-        body: JSON.stringify({ approved_by: user?.email ?? user?.nombre ?? 'Cirujano demo' }),
+        body: JSON.stringify({}),
       })
       setPlanning(data)
       await refreshCirugias()

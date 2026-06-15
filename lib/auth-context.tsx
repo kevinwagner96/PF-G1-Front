@@ -1,18 +1,11 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect } from 'react'
-import { apiRequest } from './api'
+import { apiRequest, ensureCsrfToken } from './api'
 import type { ReactNode } from 'react'
 import type { Usuario } from './mock-data'
 
 type AuthenticatedUser = Omit<Usuario, 'password'>
-
-const SESSION_DURATION_MS = 2 * 60 * 60 * 1000
-
-interface StoredSession {
-  user: AuthenticatedUser
-  expiresAt: number
-}
 
 interface LoginResponse {
   user: AuthenticatedUser
@@ -39,13 +32,6 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-function createStoredSession(user: AuthenticatedUser): StoredSession {
-  return {
-    user,
-    expiresAt: Date.now() + SESSION_DURATION_MS,
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -56,77 +42,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    const savedSession = localStorage.getItem('surgicare_session')
-    const legacySavedUser = localStorage.getItem('surgicare_user')
+    let cancelled = false
 
-    if (savedSession) {
-      const session = JSON.parse(savedSession) as StoredSession
-
-      if (session.expiresAt <= Date.now()) {
-        localStorage.removeItem('surgicare_session')
-        localStorage.removeItem('surgicare_user')
-        setState(prev => ({ ...prev, isLoading: false }))
-        return
+    async function restoreSession() {
+      try {
+        await ensureCsrfToken()
+        const { user } = await apiRequest<LoginResponse>('/auth/me/')
+        if (cancelled) return
+        setState({
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+          requiresPasswordChange: user.requiereCambioPassword,
+        })
+      } catch {
+        if (cancelled) return
+        setState({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null,
+          requiresPasswordChange: false,
+        })
       }
+    }
 
-      setState({
-        user: session.user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-        requiresPasswordChange: session.user.requiereCambioPassword,
-      })
-    } else if (legacySavedUser) {
-      const user = JSON.parse(legacySavedUser) as AuthenticatedUser
-      const session = createStoredSession(user)
-      localStorage.setItem('surgicare_session', JSON.stringify(session))
-      localStorage.removeItem('surgicare_user')
+    restoreSession()
 
-      setState({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-        requiresPasswordChange: user.requiereCambioPassword,
-      })
-    } else {
-      setState(prev => ({ ...prev, isLoading: false }))
+    return () => {
+      cancelled = true
     }
   }, [])
-
-  useEffect(() => {
-    if (!state.isAuthenticated) return
-
-    const savedSession = localStorage.getItem('surgicare_session')
-    if (!savedSession) return
-
-    const session = JSON.parse(savedSession) as StoredSession
-    const remainingTime = session.expiresAt - Date.now()
-
-    if (remainingTime <= 0) {
-      logout()
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      logout()
-    }, remainingTime)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [state.isAuthenticated])
 
   const login = async (email: string, password: string): Promise<{ success: boolean; requiresPasswordChange?: boolean }> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
-      const { user } = await apiRequest<LoginResponse>('/auth/login', {
+      const { user } = await apiRequest<LoginResponse>('/auth/login/', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       })
 
-      localStorage.setItem('surgicare_session', JSON.stringify(createStoredSession(user)))
-      localStorage.removeItem('surgicare_user')
-      
       setState({
         user,
         isAuthenticated: true,
@@ -147,8 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
-    localStorage.removeItem('surgicare_user')
-    localStorage.removeItem('surgicare_session')
+    apiRequest<void>('/auth/logout/', { method: 'POST' }).catch(() => undefined)
     setState({
       user: null,
       isAuthenticated: false,
@@ -159,21 +115,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const changePassword = async (newPassword: string): Promise<boolean> => {
-    if (!state.user) {
-      return false
-    }
+    if (!state.user) return false
 
     setState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
-      const { user } = await apiRequest<ChangePasswordResponse>('/auth/change-password', {
+      const { user } = await apiRequest<ChangePasswordResponse>('/auth/change-password/', {
         method: 'POST',
-        body: JSON.stringify({ userId: state.user.id, newPassword }),
+        body: JSON.stringify({ newPassword }),
       })
 
-      localStorage.setItem('surgicare_session', JSON.stringify(createStoredSession(user)))
-      localStorage.removeItem('surgicare_user')
-    
       setState(prev => ({
         ...prev,
         user,

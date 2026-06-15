@@ -91,7 +91,7 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
 
     setIsResettingDemo(true)
     try {
-      await apiRequest('/demo/reset', { method: 'POST' })
+      await apiRequest('/demo/reset/', { method: 'POST' })
       window.location.reload()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo restablecer la demo'
