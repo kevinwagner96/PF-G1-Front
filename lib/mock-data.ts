@@ -84,6 +84,7 @@ export interface Usuario {
   requiereCambioPassword: boolean
   bloqueado: boolean
   personalId?: string
+  permissions?: string[]
 }
 
 // ==================== USUARIOS ====================

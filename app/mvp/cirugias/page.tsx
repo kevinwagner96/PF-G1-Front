@@ -24,6 +24,9 @@ import {
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 
+const CREATE_PLANNING_PERMISSION = 'plannings.can_create_planning'
+const APPROVE_PLANNING_PERMISSION = 'plannings.can_approve_planning'
+
 interface CirugiaReal {
   id: string
   inicio: string | null
@@ -312,7 +315,10 @@ export default function MvpCirugiasPage() {
     .filter(Boolean)
   const progress = Math.max(0, Math.min(100, planning?.progress_percentage ?? 0))
   const pendingCirugiasCount = cirugias.filter((cirugia) => cirugia.estado === 'Pendiente').length
-  const canApprove = user?.rol === 'Cirujano' && planning?.status === 'completed'
+  const userPermissions = user?.permissions ?? []
+  const canCreatePlanning = userPermissions.includes(CREATE_PLANNING_PERMISSION)
+  const canApprovePlanning = userPermissions.includes(APPROVE_PLANNING_PERMISSION)
+  const canApprove = canApprovePlanning && planning?.status === 'completed'
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -336,14 +342,16 @@ export default function MvpCirugiasPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPlanningModalOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-                >
-                  <Sparkles size={16} />
-                  Generar planificación
-                </button>
+                {canCreatePlanning && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPlanningModalOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                  >
+                    <Sparkles size={16} />
+                    Generar planificación
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={refreshCirugias}
@@ -545,7 +553,7 @@ export default function MvpCirugiasPage() {
                     )}
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    {user?.rol === 'Cirujano' && planning && (
+                    {canApprovePlanning && planning && (
                       <button
                         type="button"
                         onClick={approvePlanning}
@@ -556,17 +564,19 @@ export default function MvpCirugiasPage() {
                         {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={startPlanning}
-                      disabled={isPlanningRequesting || planning?.status === 'planning'}
-                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-                    >
-                      <Sparkles size={16} />
-                      {isPlanningRequesting || planning?.status === 'planning'
-                        ? 'Planificando...'
-                        : 'Generar planificación semanal'}
-                    </button>
+                    {canCreatePlanning && (
+                      <button
+                        type="button"
+                        onClick={startPlanning}
+                        disabled={isPlanningRequesting || planning?.status === 'planning'}
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                      >
+                        <Sparkles size={16} />
+                        {isPlanningRequesting || planning?.status === 'planning'
+                          ? 'Planificando...'
+                          : 'Generar planificación semanal'}
+                      </button>
+                    )}
                   </div>
                 </DialogFooter>
               </DialogContent>
