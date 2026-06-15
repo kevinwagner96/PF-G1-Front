@@ -109,6 +109,7 @@ La autenticacion consulta los usuarios cargados en la tabla `users` del backend.
 
 | Rol | Email | Password |
 | --- | --- | --- |
+| System Admin | sysadmin@hospital.com | sysadmin123 |
 | Administrador | admin@hospital.com | admin123 |
 | Cirujano | cirujano@hospital.com | cirujano123 |
 | Jefe Quirofano | jefe@hospital.com | jefe123 |
@@ -132,6 +133,7 @@ styles/       Estilos globales adicionales
 | Variable | Descripcion |
 | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | URL base de la API REST. Por defecto: `http://127.0.0.1:3010/api/v1` |
+| `NEXT_PUBLIC_ADMIN_URL` | URL del Django Admin para el acceso de System Admin. Por defecto: `http://127.0.0.1:3010/admin/` |
 
 ## Notas
 

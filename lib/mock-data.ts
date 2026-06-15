@@ -80,7 +80,7 @@ export interface Usuario {
   email: string
   password: string
   nombre: string
-  rol: 'Administrador' | 'Cirujano' | 'Jefe Quirófano' | 'Recepcionista'
+  rol: 'System Admin' | 'Administrador' | 'Cirujano' | 'Jefe Quirófano' | 'Recepcionista'
   requiereCambioPassword: boolean
   bloqueado: boolean
   personalId?: string
@@ -89,6 +89,7 @@ export interface Usuario {
 
 // ==================== USUARIOS ====================
 export const mockUsuarios: Usuario[] = [
+  { id: 'u0', email: 'sysadmin@hospital.com', password: 'sysadmin123', nombre: 'System Admin', rol: 'System Admin', requiereCambioPassword: false, bloqueado: false },
   { id: 'u1', email: 'admin@hospital.com', password: 'admin123', nombre: 'Dr. García', rol: 'Administrador', requiereCambioPassword: false, bloqueado: false },
   { id: 'u2', email: 'cirujano@hospital.com', password: 'cirujano123', nombre: 'Dr. López', rol: 'Cirujano', requiereCambioPassword: true, bloqueado: false, personalId: 'p1' },
   { id: 'u3', email: 'jefe@hospital.com', password: 'jefe123', nombre: 'Dra. Martínez', rol: 'Jefe Quirófano', requiereCambioPassword: false, bloqueado: false },

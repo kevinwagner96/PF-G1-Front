@@ -18,10 +18,14 @@ import {
   User,
   ClipboardList,
   FileText,
-  UserCircle
+  Settings,
+  UserCircle,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { apiRequest } from '@/lib/api'
+
+const ACCESS_SYSTEM_ADMIN_PERMISSION = 'accounts.can_access_system_admin'
+const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? 'http://127.0.0.1:3010/admin/'
 
 interface MenuItem {
   id: string
@@ -79,6 +83,7 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   const [expanded, setExpanded] = useState<string | null>('cirugias')
   const [isResettingDemo, setIsResettingDemo] = useState(false)
   const visibleMenuItems = navigationMode === 'mvp' ? mvpMenuItems : menuItems
+  const canAccessSystemAdmin = user?.permissions?.includes(ACCESS_SYSTEM_ADMIN_PERMISSION) ?? false
 
   const handleLogout = () => {
     logout()
@@ -201,6 +206,16 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
             <span className="flex-1 text-left text-sm font-medium">
               {isResettingDemo ? 'Restableciendo...' : 'Restablecer demo'}
             </span>
+          </button>
+        )}
+        {canAccessSystemAdmin && (
+          <button
+            type="button"
+            onClick={() => window.open(ADMIN_URL, '_blank', 'noopener,noreferrer')}
+            className="mb-3 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <Settings size={18} className="text-blue-600" />
+            <span className="flex-1 text-left text-sm font-medium">Administración del sistema</span>
           </button>
         )}
         <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
