@@ -70,6 +70,12 @@ const mvpMenuItems: MenuItem[] = [
       },
     ],
   },
+  {
+    id: 'reportes',
+    label: 'Reportes',
+    icon: <FileText size={20} />,
+    href: '/mvp/reportes',
+  },
 ]
 
 interface SidebarProps {
