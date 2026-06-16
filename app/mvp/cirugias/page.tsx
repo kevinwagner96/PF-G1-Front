@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CheckCircle,
   Clock,
+  Eye,
   RefreshCw,
   Sparkles,
   Trash2,
@@ -45,7 +46,7 @@ interface CirugiaReal {
   observaciones: string | null
 }
 
-type PlanningStatus = 'planning' | 'completed' | 'failed' | 'approved'
+type PlanningStatus = 'planning' | 'pending_approval' | 'failed' | 'approved' | 'rejected'
 
 interface PlanningCreateResponse {
   id: string
@@ -114,6 +115,9 @@ interface PlanningResponse {
   duration_seconds: number | null
   approved_at: string | null
   approved_by: string | null
+  rejected_at: string | null
+  rejected_by: string | null
+  rejection_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -138,21 +142,25 @@ function getCurrentWeekStart() {
 
 function getStatusLabel(status: PlanningStatus) {
   if (status === 'planning') return 'Planificando'
-  if (status === 'completed') return 'Lista para aprobar'
+  if (status === 'pending_approval') return 'Pendiente de aprobación'
   if (status === 'approved') return 'Aprobada'
+  if (status === 'rejected') return 'Rechazada'
   return 'Fallida'
 }
 
 function getStatusClasses(status: PlanningStatus) {
   if (status === 'approved') return 'border-purple-200 bg-purple-50 text-purple-700'
-  if (status === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'pending_approval') return 'border-amber-200 bg-amber-50 text-amber-800'
+  if (status === 'rejected') return 'border-slate-200 bg-slate-50 text-slate-700'
   if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
   return 'border-blue-200 bg-blue-50 text-blue-700'
 }
 
 function getStatusIcon(status: PlanningStatus) {
-  if (status === 'approved' || status === 'completed') return <CheckCircle size={16} />
+  if (status === 'approved') return <CheckCircle size={16} />
+  if (status === 'pending_approval') return <Clock size={16} />
   if (status === 'failed') return <XCircle size={16} />
+  if (status === 'rejected') return <XCircle size={16} />
   return <Activity size={16} className="animate-pulse" />
 }
 
@@ -172,7 +180,10 @@ export default function MvpCirugiasPage() {
   const [isPlanningRequesting, setIsPlanningRequesting] = useState(false)
   const [isDeletingPlanning, setIsDeletingPlanning] = useState(false)
   const [isApprovingPlanning, setIsApprovingPlanning] = useState(false)
+  const [isRejectingPlanning, setIsRejectingPlanning] = useState(false)
   const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false)
+  const [showRejectReason, setShowRejectReason] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
   const [showPendingOutside, setShowPendingOutside] = useState(false)
 
   useEffect(() => {
@@ -198,9 +209,24 @@ export default function MvpCirugiasPage() {
     }
   }
 
+  const fetchActivePlanning = async () => {
+    setPlanningError(null)
+    try {
+      const data = await apiRequest<PlanningResponse>('/plannings/active/')
+      setPlanning(data)
+    } catch (fetchError) {
+      if (fetchError instanceof Error && fetchError.message === 'Planning not found') {
+        setPlanning(null)
+        return
+      }
+      setPlanningError(fetchError instanceof Error ? fetchError.message : 'No se pudo consultar la planificación activa')
+    }
+  }
+
   useEffect(() => {
     if (!isAuthenticated || requiresPasswordChange) return
     refreshCirugias()
+    fetchActivePlanning()
   }, [isAuthenticated, requiresPasswordChange])
 
   useEffect(() => {
@@ -256,6 +282,8 @@ export default function MvpCirugiasPage() {
       const data = await apiRequest<PlanningResponse>(`/plannings/${created.scheduler_uuid}/`)
       setPlanning(data)
       setIsPlanningModalOpen(true)
+      setShowRejectReason(false)
+      setRejectionReason('')
     } catch (planningRequestError) {
       setPlanningError(
         planningRequestError instanceof Error
@@ -299,6 +327,29 @@ export default function MvpCirugiasPage() {
     }
   }
 
+  const rejectPlanning = async () => {
+    if (!planning) return
+    if (!rejectionReason.trim()) {
+      setPlanningError('Ingresá un motivo para rechazar la planificación')
+      setShowRejectReason(true)
+      return
+    }
+    setIsRejectingPlanning(true)
+    setPlanningError(null)
+    try {
+      const data = await apiRequest<PlanningResponse>(`/plannings/${planning.scheduler_uuid}/reject/`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: rejectionReason.trim() }),
+      })
+      setPlanning(data)
+      setShowRejectReason(false)
+    } catch (rejectError) {
+      setPlanningError(rejectError instanceof Error ? rejectError.message : 'No se pudo rechazar la planificación')
+    } finally {
+      setIsRejectingPlanning(false)
+    }
+  }
+
   const planningOutput = planning?.output_payload
   const planningDays = planningOutput?.dias ?? []
   const surgeryIdBySchedulerId = useMemo(
@@ -318,7 +369,11 @@ export default function MvpCirugiasPage() {
   const userPermissions = user?.permissions ?? []
   const canCreatePlanning = userPermissions.includes(CREATE_PLANNING_PERMISSION)
   const canApprovePlanning = userPermissions.includes(APPROVE_PLANNING_PERMISSION)
-  const canApprove = canApprovePlanning && planning?.status === 'completed'
+  const canReviewPlanning = canApprovePlanning && planning?.status === 'pending_approval'
+  const canDeletePlanning = canCreatePlanning
+  const canStartPlanning = canCreatePlanning && planning?.status !== 'planning' && planning?.status !== 'pending_approval'
+  const modalTitle = canReviewPlanning ? 'Revisar planificación semanal' : 'Generar planificación semanal'
+  const shouldShowPendingApprovalSnack = canReviewPlanning && !isPlanningModalOpen
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -349,7 +404,17 @@ export default function MvpCirugiasPage() {
                     className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                   >
                     <Sparkles size={16} />
-                    Generar planificación
+                    {planning ? 'Ver planificación' : 'Generar planificación'}
+                  </button>
+                )}
+                {canReviewPlanning && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPlanningModalOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
+                  >
+                    <Eye size={16} />
+                    Ver planificación
                   </button>
                 )}
                 <button
@@ -368,9 +433,11 @@ export default function MvpCirugiasPage() {
                 <DialogHeader>
                   <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
                     <div>
-                      <DialogTitle>Generar planificación semanal</DialogTitle>
+                      <DialogTitle>{modalTitle}</DialogTitle>
                       <DialogDescription>
-                        {pendingCirugiasCount} cirugías pendientes para planificar esta semana.
+                        {canReviewPlanning
+                          ? 'Revisá la propuesta generada por IA antes de confirmar la agenda.'
+                          : `${pendingCirugiasCount} cirugías pendientes para planificar esta semana.`}
                       </DialogDescription>
                     </div>
                     {planning ? (
@@ -420,9 +487,22 @@ export default function MvpCirugiasPage() {
                   </div>
                 )}
 
+                {planning?.status === 'pending_approval' && (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <Clock size={16} />
+                    Esta planificación está pendiente de aprobación del cirujano.
+                  </div>
+                )}
+
                 {planningError && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {planningError}
+                  </div>
+                )}
+
+                {planning?.status === 'rejected' && planning.rejection_reason && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <span className="font-medium">Motivo del rechazo:</span> {planning.rejection_reason}
                   </div>
                 )}
 
@@ -530,11 +610,11 @@ export default function MvpCirugiasPage() {
 
                 <DialogFooter className="items-center sm:justify-between">
                   <div className="flex flex-wrap gap-2">
-                    {planning && (
+                    {planning && canDeletePlanning && (
                       <button
                         type="button"
                         onClick={deletePlanning}
-                        disabled={isDeletingPlanning || planning.status === 'planning'}
+                        disabled={isDeletingPlanning || planning.status === 'planning' || planning.status === 'pending_approval'}
                         className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
                       >
                         <Trash2 size={14} />
@@ -553,22 +633,44 @@ export default function MvpCirugiasPage() {
                     )}
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    {canApprovePlanning && planning && (
-                      <button
-                        type="button"
-                        onClick={approvePlanning}
-                        disabled={!canApprove || isApprovingPlanning}
-                        className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
-                      >
-                        <CheckCircle size={14} />
-                        {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
-                      </button>
+                    {canReviewPlanning && (
+                      <>
+                        <div className="flex w-full flex-col gap-2 sm:w-auto">
+                          {showRejectReason && (
+                            <textarea
+                              value={rejectionReason}
+                              onChange={(event) => setRejectionReason(event.target.value)}
+                              placeholder="Motivo del rechazo"
+                              rows={3}
+                              className="min-h-20 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-amber-500 sm:w-80"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={showRejectReason ? rejectPlanning : () => setShowRejectReason(true)}
+                            disabled={isRejectingPlanning}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
+                          >
+                            <XCircle size={14} />
+                            {isRejectingPlanning ? 'Rechazando...' : showRejectReason ? 'Confirmar rechazo' : 'Rechazar'}
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={approvePlanning}
+                          disabled={isApprovingPlanning}
+                          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
+                        >
+                          <CheckCircle size={14} />
+                          {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
+                        </button>
+                      </>
                     )}
                     {canCreatePlanning && (
                       <button
                         type="button"
                         onClick={startPlanning}
-                        disabled={isPlanningRequesting || planning?.status === 'planning'}
+                        disabled={isPlanningRequesting || !canStartPlanning}
                         className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
                       >
                         <Sparkles size={16} />
@@ -656,6 +758,25 @@ export default function MvpCirugiasPage() {
           </div>
         </main>
       </div>
+      {shouldShowPendingApprovalSnack && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg border border-amber-200 bg-white p-4 shadow-xl">
+          <div className="flex items-start gap-3">
+            <Clock size={20} className="mt-0.5 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-900">Hay una planificación pendiente de aprobación</p>
+              <p className="mt-1 text-sm text-slate-600">Abrí la propuesta para aprobarla o rechazarla con motivo.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsPlanningModalOpen(true)}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
+          >
+            <Eye size={14} />
+            Ver planificación
+          </button>
+        </div>
+      )}
     </div>
   )
 }
