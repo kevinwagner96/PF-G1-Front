@@ -4,7 +4,7 @@ Frontend del Proyecto Final desarrollado por el Grupo 1 de la Universidad Tecnol
 
 ## Descripcion
 
-SurgiCare es una aplicacion web para la gestion de turnos quirurgicos. Incluye pantallas para cirugias, agenda, quirofanos, personal, tipos de cirugia, emergencias y autenticacion con usuarios de prueba.
+SurgiCare es una aplicacion web para la gestion de turnos quirurgicos. Incluye pantallas para cirugias, agenda, quirofanos, personal, tipos de cirugia, emergencias, reportes basicos y autenticacion con usuarios de prueba.
 
 ## Institucion
 
@@ -82,7 +82,7 @@ http://localhost:3000
 
 ## Conexion con backend
 
-El login y el MVP consumen la API REST de `PF-G1-Back-Django`. Para desarrollo local:
+El login y las pantallas MVP consumen la API REST de `PF-G1-Back-Django`. Para desarrollo local:
 
 ```bash
 cp .env.local.example .env.local
@@ -93,6 +93,12 @@ Por defecto apunta a:
 ```text
 http://127.0.0.1:3010/api/v1
 ```
+
+## Pantallas MVP reales
+
+- `/mvp/cirugias`: listado real de cirugias desde el Back Django. Por defecto muestra cirugias `Pendiente` y permite buscar, filtrar por estado/especialidad y ordenar por prioridad, fecha o paciente.
+- `/mvp/cirugias`: tambien concentra el flujo de planificacion semanal. El administrador genera la planificacion, el cirujano revisa la planificacion pendiente y puede aprobarla o rechazarla con motivo.
+- `/mvp/reportes`: muestra indicadores en tiempo real desde PostgreSQL/Django, sin mocks: utilizacion de quirofanos, tasa de cancelacion y tiempo promedio de espera.
 
 ## Scripts disponibles
 
@@ -137,7 +143,7 @@ styles/       Estilos globales adicionales
 
 ## Notas
 
-- El proyecto conserva datos mock para pantallas no MVP; `/mvp/cirugias` consume datos reales del Back Django.
+- El proyecto conserva datos mock para pantallas no MVP; las rutas `/mvp/*` deben consumir datos reales del Back Django.
 - La sesion autenticada usa cookies de sesion Django y CSRF.
 - El archivo `next.config.mjs` ignora errores de TypeScript durante el build. Antes de una entrega final conviene revisar y corregir esos errores si aparecen.
 - En produccion se incluye Vercel Analytics.

@@ -8,7 +8,9 @@ import {
   CheckCircle,
   Clock,
   Eye,
+  Filter,
   RefreshCw,
+  Search,
   Sparkles,
   Trash2,
   XCircle,
@@ -47,6 +49,7 @@ interface CirugiaReal {
 }
 
 type PlanningStatus = 'planning' | 'pending_approval' | 'failed' | 'approved' | 'rejected'
+type SurgerySortKey = 'inicio_asc' | 'inicio_desc' | 'paciente_asc' | 'prioridad_pendientes'
 
 interface PlanningCreateResponse {
   id: string
@@ -168,6 +171,31 @@ function reverseMap(map?: Record<string, number>) {
   return Object.fromEntries(Object.entries(map ?? {}).map(([key, value]) => [value, key])) as Record<number, string>
 }
 
+function sortCirugias(cirugias: CirugiaReal[], sortKey: SurgerySortKey) {
+  return [...cirugias].sort((left, right) => {
+    if (sortKey === 'paciente_asc') {
+      return left.paciente.localeCompare(right.paciente, 'es')
+    }
+
+    if (sortKey === 'inicio_desc') {
+      const leftTime = left.inicio ? new Date(left.inicio).getTime() : 0
+      const rightTime = right.inicio ? new Date(right.inicio).getTime() : 0
+      return rightTime - leftTime
+    }
+
+    if (sortKey === 'prioridad_pendientes') {
+      const leftPending = left.estado === 'Pendiente' ? 0 : 1
+      const rightPending = right.estado === 'Pendiente' ? 0 : 1
+      if (leftPending !== rightPending) return leftPending - rightPending
+      return left.paciente.localeCompare(right.paciente, 'es')
+    }
+
+    const leftTime = left.inicio ? new Date(left.inicio).getTime() : Number.POSITIVE_INFINITY
+    const rightTime = right.inicio ? new Date(right.inicio).getTime() : Number.POSITIVE_INFINITY
+    return leftTime - rightTime
+  })
+}
+
 
 export default function MvpCirugiasPage() {
   const router = useRouter()
@@ -185,6 +213,10 @@ export default function MvpCirugiasPage() {
   const [showRejectReason, setShowRejectReason] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [showPendingOutside, setShowPendingOutside] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('Pendiente')
+  const [specialtyFilter, setSpecialtyFilter] = useState('Todas')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortKey, setSortKey] = useState<SurgerySortKey>('prioridad_pendientes')
 
   useEffect(() => {
     if (!isLoading) {
@@ -366,6 +398,28 @@ export default function MvpCirugiasPage() {
     .filter(Boolean)
   const progress = Math.max(0, Math.min(100, planning?.progress_percentage ?? 0))
   const pendingCirugiasCount = cirugias.filter((cirugia) => cirugia.estado === 'Pendiente').length
+  const statusOptions = useMemo(
+    () => ['Todos', ...Array.from(new Set(cirugias.map((cirugia) => cirugia.estado))).sort((a, b) => a.localeCompare(b, 'es'))],
+    [cirugias],
+  )
+  const specialtyOptions = useMemo(
+    () => ['Todas', ...Array.from(new Set(cirugias.map((cirugia) => cirugia.especialidad))).sort((a, b) => a.localeCompare(b, 'es'))],
+    [cirugias],
+  )
+  const filteredCirugias = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    const filtered = cirugias.filter((cirugia) => {
+      const matchesStatus = statusFilter === 'Todos' || cirugia.estado === statusFilter
+      const matchesSpecialty = specialtyFilter === 'Todas' || cirugia.especialidad === specialtyFilter
+      const matchesSearch =
+        !normalizedSearch ||
+        cirugia.paciente.toLowerCase().includes(normalizedSearch) ||
+        cirugia.dni.toLowerCase().includes(normalizedSearch) ||
+        cirugia.intervenciones.some((intervencion) => intervencion.toLowerCase().includes(normalizedSearch))
+      return matchesStatus && matchesSpecialty && matchesSearch
+    })
+    return sortCirugias(filtered, sortKey)
+  }, [cirugias, searchTerm, sortKey, specialtyFilter, statusFilter])
   const userPermissions = user?.permissions ?? []
   const canCreatePlanning = userPermissions.includes(CREATE_PLANNING_PERMISSION)
   const canApprovePlanning = userPermissions.includes(APPROVE_PLANNING_PERMISSION)
@@ -685,6 +739,76 @@ export default function MvpCirugiasPage() {
             </Dialog>
 
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div className="border-b border-border bg-white p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="min-w-64 flex-1 text-sm font-medium text-slate-700">
+                    Buscar
+                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                      <Search size={16} className="text-slate-400" />
+                      <input
+                        type="search"
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder="Paciente, DNI o intervención"
+                        className="w-full bg-transparent text-sm font-normal text-slate-900 outline-none placeholder:text-slate-400"
+                      />
+                    </div>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Estado
+                    <select
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value)}
+                      className="mt-1 block min-w-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none transition-colors focus:border-blue-500"
+                    >
+                      {statusOptions.map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Especialidad
+                    <select
+                      value={specialtyFilter}
+                      onChange={(event) => setSpecialtyFilter(event.target.value)}
+                      className="mt-1 block min-w-48 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none transition-colors focus:border-blue-500"
+                    >
+                      {specialtyOptions.map((specialty) => (
+                        <option key={specialty} value={specialty}>{specialty}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Ordenar
+                    <select
+                      value={sortKey}
+                      onChange={(event) => setSortKey(event.target.value as SurgerySortKey)}
+                      className="mt-1 block min-w-52 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none transition-colors focus:border-blue-500"
+                    >
+                      <option value="prioridad_pendientes">Pendientes primero</option>
+                      <option value="inicio_asc">Inicio más próximo</option>
+                      <option value="inicio_desc">Inicio más reciente</option>
+                      <option value="paciente_asc">Paciente A-Z</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter('Pendiente')
+                      setSpecialtyFilter('Todas')
+                      setSearchTerm('')
+                      setSortKey('prioridad_pendientes')
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <Filter size={16} />
+                    Pendientes
+                  </button>
+                </div>
+                <div className="mt-3 text-sm text-slate-500">
+                  Mostrando <span className="font-medium text-slate-900">{filteredCirugias.length}</span> de <span className="font-medium text-slate-900">{cirugias.length}</span> cirugías.
+                </div>
+              </div>
               {isFetching ? (
                 <div className="flex min-h-64 items-center justify-center text-slate-500">
                   Cargando cirugías...
@@ -700,6 +824,14 @@ export default function MvpCirugiasPage() {
                   <p className="mt-2 max-w-md text-sm text-slate-500">
                     La tabla ya consulta la base real. Cuando carguemos cirugías en PostgreSQL,
                     van a aparecer acá.
+                  </p>
+                </div>
+              ) : filteredCirugias.length === 0 ? (
+                <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
+                  <Search size={44} className="mb-4 text-slate-300" />
+                  <h3 className="text-lg font-semibold text-slate-900">No hay resultados</h3>
+                  <p className="mt-2 max-w-md text-sm text-slate-500">
+                    Probá cambiar el estado, la especialidad o el texto de búsqueda.
                   </p>
                 </div>
               ) : (
@@ -718,7 +850,7 @@ export default function MvpCirugiasPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {cirugias.map((cirugia) => (
+                      {filteredCirugias.map((cirugia) => (
                         <tr key={cirugia.id} className="hover:bg-muted/50">
                           <td className="px-4 py-4 font-medium text-foreground">
                             {formatDateTime(cirugia.inicio)}
