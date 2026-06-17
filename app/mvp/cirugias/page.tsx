@@ -7,8 +7,10 @@ import {
   CalendarDays,
   CheckCircle,
   Clock,
+  Edit3,
   Eye,
   Filter,
+  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -37,15 +39,27 @@ interface CirugiaReal {
   pacienteId: string
   paciente: string
   dni: string
+  edad: number | null
+  obra_social: string | null
+  especialidadId: string
   especialidad: string
+  salaId: string | null
   sala: string | null
+  anestesiaId: string | null
   anestesia: string | null
   byer: boolean
   sedacion: boolean
   estado: string
+  intervencionIds: string[]
   intervenciones: string[]
   insumos: { nombre: string; cantidad: number }[]
   observaciones: string | null
+  duracion_estimada_minutos: number
+  prioridad_clinica: number
+  cirujanoForzadoId: string | null
+  cirujanoForzado: { id: string; nombre: string; rol: string } | null
+  created_at: string
+  updated_at: string
 }
 
 type PlanningStatus = 'planning' | 'pending_approval' | 'failed' | 'approved' | 'rejected'
@@ -125,6 +139,40 @@ interface PlanningResponse {
   updated_at: string
 }
 
+interface SurgeryCatalogs {
+  specialties: { id: string; nombre: string }[]
+  interventions: { id: string; nombre: string; especialidadId: string }[]
+  anesthesia_types: { id: string; nombre: string }[]
+  surgeons: { id: string; nombre: string; rol: string }[]
+}
+
+interface PlanningPreflight {
+  pending_count: number
+  valid_count: number
+  can_plan: boolean
+  blocking_reasons: string[]
+  invalid_surgeries: { id: string; paciente: string; dni: string; reasons: string[] }[]
+  resources: {
+    available_operating_rooms_count: number
+    available_surgeons_count: number
+  }
+}
+
+interface SurgeryFormState {
+  dni: string
+  paciente: string
+  edad: string
+  obra_social: string
+  intervention_id: string
+  tipo_anestesia_id: string
+  cirujano_forzado_id: string
+  duracion_estimada_minutos: string
+  prioridad_clinica: string
+  byer: boolean
+  sedacion: boolean
+  observaciones: string
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return 'Sin programar'
 
@@ -196,20 +244,81 @@ function sortCirugias(cirugias: CirugiaReal[], sortKey: SurgerySortKey) {
   })
 }
 
+const emptySurgeryForm: SurgeryFormState = {
+  dni: '',
+  paciente: '',
+  edad: '',
+  obra_social: '',
+  intervention_id: '',
+  tipo_anestesia_id: '',
+  cirujano_forzado_id: '',
+  duracion_estimada_minutos: '90',
+  prioridad_clinica: '1',
+  byer: false,
+  sedacion: false,
+  observaciones: '',
+}
+
+function formFromSurgery(cirugia: CirugiaReal): SurgeryFormState {
+  return {
+    dni: cirugia.dni,
+    paciente: cirugia.paciente,
+    edad: cirugia.edad?.toString() ?? '',
+    obra_social: cirugia.obra_social ?? '',
+    intervention_id: cirugia.intervencionIds[0] ?? '',
+    tipo_anestesia_id: cirugia.anestesiaId ?? '',
+    cirujano_forzado_id: cirugia.cirujanoForzadoId ?? '',
+    duracion_estimada_minutos: cirugia.duracion_estimada_minutos.toString(),
+    prioridad_clinica: cirugia.prioridad_clinica.toString(),
+    byer: cirugia.byer,
+    sedacion: cirugia.sedacion,
+    observaciones: cirugia.observaciones ?? '',
+  }
+}
+
+function buildSurgeryPayload(form: SurgeryFormState) {
+  return {
+    patient: {
+      dni: form.dni.trim(),
+      nombre: form.paciente.trim(),
+      edad: form.edad.trim() ? Number(form.edad) : null,
+      obra_social: form.obra_social.trim() || null,
+    },
+    intervention_ids: [form.intervention_id],
+    tipo_anestesia_id: form.tipo_anestesia_id || null,
+    cirujano_forzado_id: form.cirujano_forzado_id || null,
+    duracion_estimada_minutos: Number(form.duracion_estimada_minutos),
+    prioridad_clinica: Number(form.prioridad_clinica),
+    byer: form.byer,
+    sedacion: form.sedacion,
+    observaciones: form.observaciones.trim() || null,
+  }
+}
+
 
 export default function MvpCirugiasPage() {
   const router = useRouter()
   const { isAuthenticated, isLoading, requiresPasswordChange, user } = useAuth()
   const [cirugias, setCirugias] = useState<CirugiaReal[]>([])
+  const [catalogs, setCatalogs] = useState<SurgeryCatalogs | null>(null)
   const [isFetching, setIsFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [planning, setPlanning] = useState<PlanningResponse | null>(null)
+  const [preflight, setPreflight] = useState<PlanningPreflight | null>(null)
   const [planningError, setPlanningError] = useState<string | null>(null)
+  const [surgeryError, setSurgeryError] = useState<string | null>(null)
   const [isPlanningRequesting, setIsPlanningRequesting] = useState(false)
   const [isDeletingPlanning, setIsDeletingPlanning] = useState(false)
   const [isApprovingPlanning, setIsApprovingPlanning] = useState(false)
   const [isRejectingPlanning, setIsRejectingPlanning] = useState(false)
   const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false)
+  const [isSurgeryModalOpen, setIsSurgeryModalOpen] = useState(false)
+  const [isSavingSurgery, setIsSavingSurgery] = useState(false)
+  const [selectedSurgery, setSelectedSurgery] = useState<CirugiaReal | null>(null)
+  const [editingSurgery, setEditingSurgery] = useState<CirugiaReal | null>(null)
+  const [surgeryForm, setSurgeryForm] = useState<SurgeryFormState>(emptySurgeryForm)
+  const [cancelSurgery, setCancelSurgery] = useState<CirugiaReal | null>(null)
+  const [isCancellingSurgery, setIsCancellingSurgery] = useState(false)
   const [showRejectReason, setShowRejectReason] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [showPendingOutside, setShowPendingOutside] = useState(false)
@@ -217,6 +326,9 @@ export default function MvpCirugiasPage() {
   const [specialtyFilter, setSpecialtyFilter] = useState('Todas')
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState<SurgerySortKey>('prioridad_pendientes')
+  const userPermissions = user?.permissions ?? []
+  const canCreatePlanning = userPermissions.includes(CREATE_PLANNING_PERMISSION)
+  const canApprovePlanning = userPermissions.includes(APPROVE_PLANNING_PERMISSION)
 
   useEffect(() => {
     if (!isLoading) {
@@ -241,6 +353,31 @@ export default function MvpCirugiasPage() {
     }
   }
 
+  const fetchCatalogs = async () => {
+    try {
+      const data = await apiRequest<SurgeryCatalogs>('/surgery-catalogs/')
+      setCatalogs(data)
+      setSurgeryForm((current) => ({
+        ...current,
+        intervention_id: current.intervention_id || data.interventions[0]?.id || '',
+        tipo_anestesia_id: current.tipo_anestesia_id || data.anesthesia_types[0]?.id || '',
+        cirujano_forzado_id: current.cirujano_forzado_id || data.surgeons[0]?.id || '',
+      }))
+    } catch (fetchError) {
+      setSurgeryError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar los catálogos')
+    }
+  }
+
+  const refreshPreflight = async () => {
+    if (!canCreatePlanning) return
+    try {
+      const data = await apiRequest<PlanningPreflight>('/plannings/preflight/')
+      setPreflight(data)
+    } catch (fetchError) {
+      setPlanningError(fetchError instanceof Error ? fetchError.message : 'No se pudieron validar los datos para planificar')
+    }
+  }
+
   const fetchActivePlanning = async () => {
     setPlanningError(null)
     try {
@@ -258,8 +395,14 @@ export default function MvpCirugiasPage() {
   useEffect(() => {
     if (!isAuthenticated || requiresPasswordChange) return
     refreshCirugias()
+    fetchCatalogs()
     fetchActivePlanning()
   }, [isAuthenticated, requiresPasswordChange])
+
+  useEffect(() => {
+    if (!isPlanningModalOpen || !canCreatePlanning) return
+    refreshPreflight()
+  }, [isPlanningModalOpen, canCreatePlanning])
 
   useEffect(() => {
     if (!planning || planning.status !== 'planning') return
@@ -307,6 +450,12 @@ export default function MvpCirugiasPage() {
     setIsPlanningRequesting(true)
     setPlanningError(null)
     try {
+      const latestPreflight = await apiRequest<PlanningPreflight>('/plannings/preflight/')
+      setPreflight(latestPreflight)
+      if (!latestPreflight.can_plan) {
+        setPlanningError('Corregí las validaciones pendientes antes de generar la planificación')
+        return
+      }
       const created = await apiRequest<PlanningCreateResponse>('/plannings/', {
         method: 'POST',
         body: JSON.stringify({ week_start: getCurrentWeekStart() }),
@@ -324,6 +473,64 @@ export default function MvpCirugiasPage() {
       )
     } finally {
       setIsPlanningRequesting(false)
+    }
+  }
+
+  const openCreateSurgery = () => {
+    setEditingSurgery(null)
+    setSurgeryError(null)
+    setSurgeryForm({
+      ...emptySurgeryForm,
+      intervention_id: catalogs?.interventions[0]?.id ?? '',
+      tipo_anestesia_id: catalogs?.anesthesia_types[0]?.id ?? '',
+      cirujano_forzado_id: catalogs?.surgeons[0]?.id ?? '',
+    })
+    setIsSurgeryModalOpen(true)
+  }
+
+  const openEditSurgery = (cirugia: CirugiaReal) => {
+    setEditingSurgery(cirugia)
+    setSurgeryError(null)
+    setSurgeryForm(formFromSurgery(cirugia))
+    setIsSurgeryModalOpen(true)
+  }
+
+  const saveSurgery = async () => {
+    setIsSavingSurgery(true)
+    setSurgeryError(null)
+    try {
+      const payload = buildSurgeryPayload(surgeryForm)
+      const path = editingSurgery ? `/surgeries/${editingSurgery.id}/` : '/surgeries/'
+      const method = editingSurgery ? 'PATCH' : 'POST'
+      await apiRequest<CirugiaReal>(path, {
+        method,
+        body: JSON.stringify(payload),
+      })
+      setIsSurgeryModalOpen(false)
+      setEditingSurgery(null)
+      setStatusFilter('Pendiente')
+      await refreshCirugias()
+      if (isPlanningModalOpen) await refreshPreflight()
+    } catch (saveError) {
+      setSurgeryError(saveError instanceof Error ? saveError.message : 'No se pudo guardar la cirugía')
+    } finally {
+      setIsSavingSurgery(false)
+    }
+  }
+
+  const confirmCancelSurgery = async () => {
+    if (!cancelSurgery) return
+    setIsCancellingSurgery(true)
+    setSurgeryError(null)
+    try {
+      await apiRequest<CirugiaReal>(`/surgeries/${cancelSurgery.id}/cancel/`, { method: 'POST' })
+      setCancelSurgery(null)
+      await refreshCirugias()
+      if (isPlanningModalOpen) await refreshPreflight()
+    } catch (cancelError) {
+      setSurgeryError(cancelError instanceof Error ? cancelError.message : 'No se pudo cancelar la cirugía')
+    } finally {
+      setIsCancellingSurgery(false)
     }
   }
 
@@ -396,6 +603,21 @@ export default function MvpCirugiasPage() {
   const pendingSurgeries = pendingScheduledIds
     .map((schedulerId) => cirugiasById[surgeryIdBySchedulerId[schedulerId]])
     .filter(Boolean)
+  const scheduledPlanningItems = planningDays.flatMap((day) =>
+    day.bloques.flatMap((block) =>
+      block.cronograma.map((item) => ({
+        day: day.nombre,
+        block,
+        item,
+        cirugia: cirugiasById[surgeryIdBySchedulerId[item.paciente_id]],
+      })),
+    ),
+  )
+  const utilizedPlanningBlocks = planningDays.flatMap((day) => day.bloques).filter((block) => block.cronograma.length > 0)
+  const averagePlanningUtilization =
+    utilizedPlanningBlocks.length > 0
+      ? Math.round(utilizedPlanningBlocks.reduce((total, block) => total + block.utilizacion_porcentaje, 0) / utilizedPlanningBlocks.length)
+      : 0
   const progress = Math.max(0, Math.min(100, planning?.progress_percentage ?? 0))
   const pendingCirugiasCount = cirugias.filter((cirugia) => cirugia.estado === 'Pendiente').length
   const statusOptions = useMemo(
@@ -420,12 +642,13 @@ export default function MvpCirugiasPage() {
     })
     return sortCirugias(filtered, sortKey)
   }, [cirugias, searchTerm, sortKey, specialtyFilter, statusFilter])
-  const userPermissions = user?.permissions ?? []
-  const canCreatePlanning = userPermissions.includes(CREATE_PLANNING_PERMISSION)
-  const canApprovePlanning = userPermissions.includes(APPROVE_PLANNING_PERMISSION)
   const canReviewPlanning = canApprovePlanning && planning?.status === 'pending_approval'
   const canDeletePlanning = canCreatePlanning
-  const canStartPlanning = canCreatePlanning && planning?.status !== 'planning' && planning?.status !== 'pending_approval'
+  const canStartPlanning =
+    canCreatePlanning &&
+    planning?.status !== 'planning' &&
+    planning?.status !== 'pending_approval' &&
+    preflight?.can_plan !== false
   const modalTitle = canReviewPlanning ? 'Revisar planificación semanal' : 'Generar planificación semanal'
   const shouldShowPendingApprovalSnack = canReviewPlanning && !isPlanningModalOpen
 
@@ -451,6 +674,16 @@ export default function MvpCirugiasPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
+                {canCreatePlanning && (
+                  <button
+                    type="button"
+                    onClick={openCreateSurgery}
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+                  >
+                    <Plus size={16} />
+                    Nueva cirugía
+                  </button>
+                )}
                 {canCreatePlanning && (
                   <button
                     type="button"
@@ -526,6 +759,46 @@ export default function MvpCirugiasPage() {
                   </div>
                 )}
 
+                {!planning && canCreatePlanning && preflight && (
+                  <div className={`rounded-xl border p-4 ${preflight.can_plan ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className={preflight.can_plan ? 'font-semibold text-emerald-950' : 'font-semibold text-red-950'}>
+                          Validación previa
+                        </h3>
+                        <p className={preflight.can_plan ? 'mt-1 text-sm text-emerald-700' : 'mt-1 text-sm text-red-700'}>
+                          {preflight.valid_count} de {preflight.pending_count} cirugías pendientes están listas para planificar.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <span className="rounded-md bg-white px-3 py-2 text-slate-700 shadow-sm">
+                          {preflight.resources.available_operating_rooms_count} quirófanos
+                        </span>
+                        <span className="rounded-md bg-white px-3 py-2 text-slate-700 shadow-sm">
+                          {preflight.resources.available_surgeons_count} cirujanos
+                        </span>
+                      </div>
+                    </div>
+                    {preflight.blocking_reasons.length > 0 && (
+                      <ul className="mt-3 space-y-1 text-sm text-red-800">
+                        {preflight.blocking_reasons.map((reason) => (
+                          <li key={reason}>• {reason}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {preflight.invalid_surgeries.length > 0 && (
+                      <div className="mt-3 max-h-40 overflow-y-auto rounded-lg bg-white p-3 text-sm shadow-sm">
+                        {preflight.invalid_surgeries.map((item) => (
+                          <div key={item.id} className="border-b border-slate-100 py-2 last:border-0">
+                            <p className="font-medium text-slate-900">{item.paciente} · DNI {item.dni}</p>
+                            <p className="text-xs text-slate-600">{item.reasons.join(' · ')}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {planning?.status === 'planning' && (
                   <div>
                     <div className="mb-2 flex items-center justify-between text-sm">
@@ -575,6 +848,30 @@ export default function MvpCirugiasPage() {
 
                 {planningDays.length > 0 && (
                   <div className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-medium uppercase text-slate-500">Programadas</p>
+                        <p className="mt-1 text-2xl font-semibold text-slate-900">
+                          {planningOutput?.resumen?.pacientes_programados ?? scheduledPlanningItems.length}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-medium uppercase text-slate-500">Quedan afuera</p>
+                        <p className="mt-1 text-2xl font-semibold text-slate-900">
+                          {planningOutput?.resumen?.pacientes_pendientes ?? pendingSurgeries.length}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-medium uppercase text-slate-500">Utilización prom.</p>
+                        <p className="mt-1 text-2xl font-semibold text-slate-900">{averagePlanningUtilization}%</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-medium uppercase text-slate-500">Ejecución</p>
+                        <p className="mt-1 text-2xl font-semibold text-slate-900">
+                          {planning?.duration_seconds ?? planningOutput?.duracion_segundos ?? '-'}s
+                        </p>
+                      </div>
+                    </div>
                     <div className="overflow-x-auto rounded-lg border border-slate-200">
                       <div className="grid min-w-[1180px] grid-cols-5 divide-x divide-slate-200">
                         {planningDays.map((day) => (
@@ -847,6 +1144,7 @@ export default function MvpCirugiasPage() {
                         <th className="px-4 py-3">Anestesia</th>
                         <th className="px-4 py-3">Estado</th>
                         <th className="px-4 py-3">Opciones</th>
+                        <th className="px-4 py-3">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -880,6 +1178,38 @@ export default function MvpCirugiasPage() {
                               cirugia.sedacion ? 'Sedación' : null,
                             ].filter(Boolean).join(' · ') || 'Sin opciones'}
                           </td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSurgery(cirugia)}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                              >
+                                <Eye size={13} />
+                                Ver
+                              </button>
+                              {canCreatePlanning && cirugia.estado === 'Pendiente' && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditSurgery(cirugia)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50"
+                                >
+                                  <Edit3 size={13} />
+                                  Editar
+                                </button>
+                              )}
+                              {canCreatePlanning && ['Pendiente', 'Programada'].includes(cirugia.estado) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCancelSurgery(cirugia)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
+                                >
+                                  <Trash2 size={13} />
+                                  Cancelar
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -890,6 +1220,253 @@ export default function MvpCirugiasPage() {
           </div>
         </main>
       </div>
+      <Dialog open={isSurgeryModalOpen} onOpenChange={setIsSurgeryModalOpen}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingSurgery ? 'Editar cirugía' : 'Nueva cirugía'}</DialogTitle>
+            <DialogDescription>
+              {editingSurgery
+                ? 'Actualizá los datos operativos. La fecha, hora y sala dependen de la planificación.'
+                : 'Registrá una solicitud quirúrgica pendiente de asignación.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">
+              DNI
+              <input
+                value={surgeryForm.dni}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, dni: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Paciente
+              <input
+                value={surgeryForm.paciente}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, paciente: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Edad
+              <input
+                type="number"
+                min="0"
+                value={surgeryForm.edad}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, edad: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Obra social
+              <input
+                value={surgeryForm.obra_social}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, obra_social: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700 md:col-span-2">
+              Intervención
+              <select
+                value={surgeryForm.intervention_id}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, intervention_id: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              >
+                {(catalogs?.interventions ?? []).map((intervention) => {
+                  const specialty = catalogs?.specialties.find((item) => item.id === intervention.especialidadId)
+                  return (
+                    <option key={intervention.id} value={intervention.id}>
+                      {intervention.nombre}{specialty ? ` · ${specialty.nombre}` : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Anestesia
+              <select
+                value={surgeryForm.tipo_anestesia_id}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, tipo_anestesia_id: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              >
+                <option value="">Sin definir</option>
+                {(catalogs?.anesthesia_types ?? []).map((anesthesia) => (
+                  <option key={anesthesia.id} value={anesthesia.id}>{anesthesia.nombre}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Cirujano
+              <select
+                value={surgeryForm.cirujano_forzado_id}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, cirujano_forzado_id: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              >
+                <option value="">Sin asignar</option>
+                {(catalogs?.surgeons ?? []).map((surgeon) => (
+                  <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Duración estimada
+              <input
+                type="number"
+                min="1"
+                value={surgeryForm.duracion_estimada_minutos}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, duracion_estimada_minutos: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Prioridad clínica
+              <input
+                type="number"
+                min="0.01"
+                step="0.1"
+                value={surgeryForm.prioridad_clinica}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, prioridad_clinica: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            <div className="flex items-center gap-4 md:col-span-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={surgeryForm.byer}
+                  onChange={(event) => setSurgeryForm((form) => ({ ...form, byer: event.target.checked }))}
+                />
+                Byer
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={surgeryForm.sedacion}
+                  onChange={(event) => setSurgeryForm((form) => ({ ...form, sedacion: event.target.checked }))}
+                />
+                Sedación
+              </label>
+            </div>
+            <label className="text-sm font-medium text-slate-700 md:col-span-2">
+              Observaciones
+              <textarea
+                value={surgeryForm.observaciones}
+                onChange={(event) => setSurgeryForm((form) => ({ ...form, observaciones: event.target.value }))}
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
+              />
+            </label>
+            {editingSurgery && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 md:col-span-2">
+                Programación actual: {formatDateTime(editingSurgery.inicio)} · {editingSurgery.sala ?? 'Sin sala'}.
+              </div>
+            )}
+          </div>
+          {surgeryError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {surgeryError}
+            </div>
+          )}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setIsSurgeryModalOpen(false)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={saveSurgery}
+              disabled={isSavingSurgery}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {isSavingSurgery ? 'Guardando...' : 'Guardar cirugía'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={selectedSurgery !== null} onOpenChange={(open) => !open && setSelectedSurgery(null)}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          {selectedSurgery && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedSurgery.paciente}</DialogTitle>
+                <DialogDescription>DNI {selectedSurgery.dni} · {selectedSurgery.estado}</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3 md:grid-cols-2">
+                {[
+                  ['Inicio', formatDateTime(selectedSurgery.inicio)],
+                  ['Fin', formatDateTime(selectedSurgery.fin)],
+                  ['Especialidad', selectedSurgery.especialidad],
+                  ['Intervenciones', selectedSurgery.intervenciones.join(', ') || 'Sin intervenciones'],
+                  ['Sala', selectedSurgery.sala ?? 'Sin sala'],
+                  ['Anestesia', selectedSurgery.anestesia ?? 'Sin definir'],
+                  ['Cirujano', selectedSurgery.cirujanoForzado?.nombre ?? 'Sin asignar'],
+                  ['Duración estimada', `${selectedSurgery.duracion_estimada_minutos} min`],
+                  ['Prioridad clínica', selectedSurgery.prioridad_clinica.toString()],
+                  ['Obra social', selectedSurgery.obra_social ?? 'Sin definir'],
+                  ['Creada', formatDateTime(selectedSurgery.created_at)],
+                  ['Actualizada', formatDateTime(selectedSurgery.updated_at)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium uppercase text-slate-500">Insumos</p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {selectedSurgery.insumos.length > 0
+                    ? selectedSurgery.insumos.map((item) => `${item.nombre} x${item.cantidad}`).join(', ')
+                    : 'Sin insumos cargados'}
+                </p>
+              </div>
+              {selectedSurgery.observaciones && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium uppercase text-slate-500">Observaciones</p>
+                  <p className="mt-1 text-sm text-slate-700">{selectedSurgery.observaciones}</p>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancelSurgery !== null} onOpenChange={(open) => !open && setCancelSurgery(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar cirugía</DialogTitle>
+            <DialogDescription>
+              La cirugía quedará como Cancelada y se liberará la sala y el horario asignado.
+            </DialogDescription>
+          </DialogHeader>
+          {cancelSurgery && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              {cancelSurgery.paciente} · {cancelSurgery.intervenciones.join(', ') || cancelSurgery.especialidad}
+            </div>
+          )}
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setCancelSurgery(null)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Volver
+            </button>
+            <button
+              type="button"
+              onClick={confirmCancelSurgery}
+              disabled={isCancellingSurgery}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+            >
+              {isCancellingSurgery ? 'Cancelando...' : 'Confirmar cancelación'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {shouldShowPendingApprovalSnack && (
         <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg border border-amber-200 bg-white p-4 shadow-xl">
           <div className="flex items-start gap-3">
