@@ -107,6 +107,31 @@ pnpm dev
 pnpm build
 pnpm start
 pnpm lint
+pnpm validate:reports
+```
+
+## Validation test de reportes
+
+Para medir la duracion de generacion de reportes MVP, primero sembrar datos en el Back:
+
+```bash
+cd ../PF-G1-Back-Django
+.venv/bin/python manage.py seed_report_validation --year 2026 --surgeries-per-month 500
+```
+
+Luego ejecutar el runner desde el Front:
+
+```bash
+pnpm validate:reports -- --year 2026 --surgeries-per-month 500
+```
+
+El script mide 10 reportes mensuales y 10 reportes anuales contra `GET /reports/summary/`, con 2 warmups no contados, y muestra promedio, minimo y maximo por grupo.
+
+Al terminar la validacion, limpiar los datos tecnicos para volver a la demo MVP normal:
+
+```bash
+cd ../PF-G1-Back-Django
+.venv/bin/python manage.py seed_report_validation --clear
 ```
 
 ## Usuarios de prueba

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "validate:reports": "node scripts/validate-report-duration.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
