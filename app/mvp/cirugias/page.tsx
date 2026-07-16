@@ -9,15 +9,17 @@ import {
   Clock,
   Edit3,
   Eye,
-  Filter,
+  ListFilter,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
   Trash2,
+  X,
   XCircle,
 } from 'lucide-react'
 import Sidebar from '@/components/sidebar'
+import SurgeryStatusBadge from '@/components/surgery-status-badge'
 import {
   Dialog,
   DialogContent,
@@ -63,8 +65,6 @@ interface CirugiaReal {
 }
 
 type PlanningStatus = 'planning' | 'pending_approval' | 'failed' | 'approved' | 'rejected'
-type SurgerySortKey = 'inicio_asc' | 'inicio_desc' | 'paciente_asc' | 'prioridad_pendientes'
-
 interface PlanningCreateResponse {
   id: string
   scheduler_uuid: string
@@ -219,31 +219,6 @@ function reverseMap(map?: Record<string, number>) {
   return Object.fromEntries(Object.entries(map ?? {}).map(([key, value]) => [value, key])) as Record<number, string>
 }
 
-function sortCirugias(cirugias: CirugiaReal[], sortKey: SurgerySortKey) {
-  return [...cirugias].sort((left, right) => {
-    if (sortKey === 'paciente_asc') {
-      return left.paciente.localeCompare(right.paciente, 'es')
-    }
-
-    if (sortKey === 'inicio_desc') {
-      const leftTime = left.inicio ? new Date(left.inicio).getTime() : 0
-      const rightTime = right.inicio ? new Date(right.inicio).getTime() : 0
-      return rightTime - leftTime
-    }
-
-    if (sortKey === 'prioridad_pendientes') {
-      const leftPending = left.estado === 'Pendiente' ? 0 : 1
-      const rightPending = right.estado === 'Pendiente' ? 0 : 1
-      if (leftPending !== rightPending) return leftPending - rightPending
-      return left.paciente.localeCompare(right.paciente, 'es')
-    }
-
-    const leftTime = left.inicio ? new Date(left.inicio).getTime() : Number.POSITIVE_INFINITY
-    const rightTime = right.inicio ? new Date(right.inicio).getTime() : Number.POSITIVE_INFINITY
-    return leftTime - rightTime
-  })
-}
-
 const emptySurgeryForm: SurgeryFormState = {
   dni: '',
   paciente: '',
@@ -322,10 +297,15 @@ export default function MvpCirugiasPage() {
   const [showRejectReason, setShowRejectReason] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [showPendingOutside, setShowPendingOutside] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('Pendiente')
-  const [specialtyFilter, setSpecialtyFilter] = useState('Todas')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState<SurgerySortKey>('prioridad_pendientes')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = useState({
+    estado: '',
+    quirofano: '',
+    fechaDesde: '',
+    fechaHasta: '',
+    dniPaciente: '',
+    cirujano: '',
+  })
   const userPermissions = user?.permissions ?? []
   const canCreatePlanning = userPermissions.includes(CREATE_PLANNING_PERMISSION)
   const canApprovePlanning = userPermissions.includes(APPROVE_PLANNING_PERMISSION)
@@ -508,7 +488,6 @@ export default function MvpCirugiasPage() {
       })
       setIsSurgeryModalOpen(false)
       setEditingSurgery(null)
-      setStatusFilter('Pendiente')
       await refreshCirugias()
       if (isPlanningModalOpen) await refreshPreflight()
     } catch (saveError) {
@@ -620,28 +599,35 @@ export default function MvpCirugiasPage() {
       : 0
   const progress = Math.max(0, Math.min(100, planning?.progress_percentage ?? 0))
   const pendingCirugiasCount = cirugias.filter((cirugia) => cirugia.estado === 'Pendiente').length
-  const statusOptions = useMemo(
-    () => ['Todos', ...Array.from(new Set(cirugias.map((cirugia) => cirugia.estado))).sort((a, b) => a.localeCompare(b, 'es'))],
-    [cirugias],
-  )
-  const specialtyOptions = useMemo(
-    () => ['Todas', ...Array.from(new Set(cirugias.map((cirugia) => cirugia.especialidad))).sort((a, b) => a.localeCompare(b, 'es'))],
-    [cirugias],
-  )
+  const operatingRoomOptions = useMemo(() => Array.from(
+    new Map(
+      cirugias
+        .filter((cirugia) => cirugia.salaId && cirugia.sala)
+        .map((cirugia) => [cirugia.salaId as string, cirugia.sala as string]),
+    ),
+    ([id, nombre]) => ({ id, nombre }),
+  ), [cirugias])
   const filteredCirugias = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
-    const filtered = cirugias.filter((cirugia) => {
-      const matchesStatus = statusFilter === 'Todos' || cirugia.estado === statusFilter
-      const matchesSpecialty = specialtyFilter === 'Todas' || cirugia.especialidad === specialtyFilter
-      const matchesSearch =
-        !normalizedSearch ||
-        cirugia.paciente.toLowerCase().includes(normalizedSearch) ||
-        cirugia.dni.toLowerCase().includes(normalizedSearch) ||
-        cirugia.intervenciones.some((intervencion) => intervencion.toLowerCase().includes(normalizedSearch))
-      return matchesStatus && matchesSpecialty && matchesSearch
+    return cirugias.filter((cirugia) => {
+      const surgeryDate = cirugia.inicio?.slice(0, 10) ?? ''
+      if (filters.estado && cirugia.estado !== filters.estado) return false
+      if (filters.quirofano && cirugia.salaId !== filters.quirofano) return false
+      if (filters.fechaDesde && (!surgeryDate || surgeryDate < filters.fechaDesde)) return false
+      if (filters.fechaHasta && (!surgeryDate || surgeryDate > filters.fechaHasta)) return false
+      if (filters.dniPaciente && !cirugia.dni.includes(filters.dniPaciente)) return false
+      if (filters.cirujano && cirugia.cirujanoForzadoId !== filters.cirujano) return false
+      return true
     })
-    return sortCirugias(filtered, sortKey)
-  }, [cirugias, searchTerm, sortKey, specialtyFilter, statusFilter])
+  }, [cirugias, filters])
+  const activeFiltersCount = Object.values(filters).filter(Boolean).length
+  const clearFilters = () => setFilters({
+    estado: '',
+    quirofano: '',
+    fechaDesde: '',
+    fechaHasta: '',
+    dniPaciente: '',
+    cirujano: '',
+  })
   const canReviewPlanning = canApprovePlanning && planning?.status === 'pending_approval'
   const canDeletePlanning = canCreatePlanning
   const canStartPlanning =
@@ -704,14 +690,6 @@ export default function MvpCirugiasPage() {
                     Ver planificación
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={refreshCirugias}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                >
-                  <RefreshCw size={16} />
-                  Actualizar
-                </button>
               </div>
             </div>
 
@@ -1035,76 +1013,136 @@ export default function MvpCirugiasPage() {
               </DialogContent>
             </Dialog>
 
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <div className="border-b border-border bg-white p-4">
-                <div className="flex flex-wrap items-end gap-3">
-                  <label className="min-w-64 flex-1 text-sm font-medium text-slate-700">
-                    Buscar
-                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
-                      <Search size={16} className="text-slate-400" />
-                      <input
-                        type="search"
-                        value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
-                        placeholder="Paciente, DNI o intervención"
-                        className="w-full bg-transparent text-sm font-normal text-slate-900 outline-none placeholder:text-slate-400"
-                      />
-                    </div>
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
+            <div className="mb-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowFilters((current) => !current)}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 font-medium transition-colors ${
+                  showFilters || activeFiltersCount > 0
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-muted text-foreground hover:bg-muted/80'
+                }`}
+              >
+                <ListFilter size={18} />
+                Filtros
+                {activeFiltersCount > 0 && (
+                  <span className="ml-1 rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </button>
+              {activeFiltersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                >
+                  <X size={14} />
+                  Limpiar filtros
+                </button>
+              )}
+              <div className="ml-auto flex gap-2">
+                {['Pendiente', 'Programada', 'En Curso', 'Completada', 'Cancelada'].map((status) => (
+                  <button
+                    type="button"
+                    key={status}
+                    onClick={() => setFilters((current) => ({
+                      ...current,
+                      estado: current.estado === status ? '' : status,
+                    }))}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      filters.estado === status
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {showFilters && (
+              <div className="mb-4 rounded-lg border border-border bg-card p-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
+                  <label className="text-xs font-medium text-muted-foreground">
                     Estado
                     <select
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value)}
-                      className="mt-1 block min-w-40 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none transition-colors focus:border-blue-500"
+                      value={filters.estado}
+                      onChange={(event) => setFilters((current) => ({ ...current, estado: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {statusOptions.map((status) => (
+                      <option value="">Todos</option>
+                      {['Pendiente', 'Programada', 'En Curso', 'Completada', 'Cancelada'].map((status) => (
                         <option key={status} value={status}>{status}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Especialidad
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Quirófano
                     <select
-                      value={specialtyFilter}
-                      onChange={(event) => setSpecialtyFilter(event.target.value)}
-                      className="mt-1 block min-w-48 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none transition-colors focus:border-blue-500"
+                      value={filters.quirofano}
+                      onChange={(event) => setFilters((current) => ({ ...current, quirofano: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {specialtyOptions.map((specialty) => (
-                        <option key={specialty} value={specialty}>{specialty}</option>
+                      <option value="">Todos</option>
+                      {operatingRoomOptions.map((room) => (
+                        <option key={room.id} value={room.id}>{room.nombre}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Ordenar
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Fecha desde
+                    <input
+                      type="date"
+                      value={filters.fechaDesde}
+                      onChange={(event) => setFilters((current) => ({ ...current, fechaDesde: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Fecha hasta
+                    <input
+                      type="date"
+                      value={filters.fechaHasta}
+                      onChange={(event) => setFilters((current) => ({ ...current, fechaHasta: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    DNI Paciente
+                    <div className="relative mt-1">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+                      <input
+                        type="text"
+                        value={filters.dniPaciente}
+                        onChange={(event) => setFilters((current) => ({ ...current, dniPaciente: event.target.value }))}
+                        placeholder="Buscar DNI..."
+                        className="w-full rounded-lg border border-input bg-background py-2 pl-8 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Cirujano
                     <select
-                      value={sortKey}
-                      onChange={(event) => setSortKey(event.target.value as SurgerySortKey)}
-                      className="mt-1 block min-w-52 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none transition-colors focus:border-blue-500"
+                      value={filters.cirujano}
+                      onChange={(event) => setFilters((current) => ({ ...current, cirujano: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="prioridad_pendientes">Pendientes primero</option>
-                      <option value="inicio_asc">Inicio más próximo</option>
-                      <option value="inicio_desc">Inicio más reciente</option>
-                      <option value="paciente_asc">Paciente A-Z</option>
+                      <option value="">Todos</option>
+                      {(catalogs?.surgeons ?? []).map((surgeon) => (
+                        <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>
+                      ))}
                     </select>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatusFilter('Pendiente')
-                      setSpecialtyFilter('Todas')
-                      setSearchTerm('')
-                      setSortKey('prioridad_pendientes')
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                  >
-                    <Filter size={16} />
-                    Pendientes
-                  </button>
                 </div>
-                <div className="mt-3 text-sm text-slate-500">
-                  Mostrando <span className="font-medium text-slate-900">{filteredCirugias.length}</span> de <span className="font-medium text-slate-900">{cirugias.length}</span> cirugías.
-                </div>
+              </div>
+            )}
+
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              <div className="border-b border-border bg-white p-4 text-sm text-slate-500">
+                Mostrando <span className="font-medium text-slate-900">{filteredCirugias.length}</span> de{' '}
+                <span className="font-medium text-slate-900">{cirugias.length}</span> cirugías.
               </div>
               {isFetching ? (
                 <div className="flex min-h-64 items-center justify-center text-slate-500">
@@ -1168,9 +1206,7 @@ export default function MvpCirugiasPage() {
                             {cirugia.anestesia ?? 'Sin definir'}
                           </td>
                           <td className="px-4 py-4">
-                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                              {cirugia.estado}
-                            </span>
+                            <SurgeryStatusBadge status={cirugia.estado} />
                           </td>
                           <td className="px-4 py-4 text-foreground">
                             {[
@@ -1183,29 +1219,32 @@ export default function MvpCirugiasPage() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedSurgery(cirugia)}
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                                aria-label="Ver cirugía"
+                                title="Ver cirugía"
+                                className="inline-flex rounded-md border border-slate-200 p-2 text-slate-700 transition-colors hover:bg-slate-50"
                               >
-                                <Eye size={13} />
-                                Ver
+                                <Eye size={15} />
                               </button>
                               {canCreatePlanning && cirugia.estado === 'Pendiente' && (
                                 <button
                                   type="button"
                                   onClick={() => openEditSurgery(cirugia)}
-                                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50"
+                                  aria-label="Editar cirugía"
+                                  title="Editar cirugía"
+                                  className="inline-flex rounded-md border border-blue-200 p-2 text-blue-700 transition-colors hover:bg-blue-50"
                                 >
-                                  <Edit3 size={13} />
-                                  Editar
+                                  <Edit3 size={15} />
                                 </button>
                               )}
                               {canCreatePlanning && ['Pendiente', 'Programada'].includes(cirugia.estado) && (
                                 <button
                                   type="button"
                                   onClick={() => setCancelSurgery(cirugia)}
-                                  className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
+                                  aria-label="Cancelar cirugía"
+                                  title="Cancelar cirugía"
+                                  className="inline-flex rounded-md border border-red-200 p-2 text-red-700 transition-colors hover:bg-red-50"
                                 >
-                                  <Trash2 size={13} />
-                                  Cancelar
+                                  <Trash2 size={15} />
                                 </button>
                               )}
                             </div>

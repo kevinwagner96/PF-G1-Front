@@ -1,71 +1,31 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Calendar, Clock, AlertCircle, CheckCircle, XCircle, Eye, Trash2, Edit2, Search, Filter, X, Plus, CalendarDays, ListFilter } from 'lucide-react'
+import { AlertCircle, Eye, Trash2, Edit2, Search, X, Plus, Sparkles, ListFilter } from 'lucide-react'
 import ViewCirugia from './view-cirugia-modal'
 import EditCirugia from './edit-cirugia-modal'
 import ProgramarModal from './programar-modal'
 import WeeklyPlanningModal from './weekly-planning-modal'
+import SurgeryStatusBadge from './surgery-status-badge'
 import { mockCirugias as initialCirugias, mockQuirofanos, getCirujanos, Cirugia } from '@/lib/mock-data'
 
-const getStatusColor = (estado: string) => {
-  switch (estado) {
-    case 'Pendiente':
-      return 'bg-gray-50 text-gray-700'
-    case 'Programada':
-      return 'bg-blue-50 text-blue-700'
-    case 'En Curso':
-      return 'bg-yellow-50 text-yellow-700'
-    case 'Completada':
-      return 'bg-green-50 text-green-700'
-    case 'Cancelada':
-      return 'bg-red-50 text-red-700'
-    default:
-      return 'bg-gray-50 text-gray-700'
-  }
-}
+const formatDateTime = (cirugia: Cirugia) => {
+  if (!cirugia.fecha || !cirugia.hora) return 'Sin programar'
 
-const getPriorityColor = (prioridad: string) => {
-  switch (prioridad) {
-    case 'Baja':
-      return 'text-green-600'
-    case 'Media':
-      return 'text-yellow-600'
-    case 'Alta':
-      return 'text-orange-600'
-    case 'Emergencia':
-      return 'text-red-600'
-    default:
-      return 'text-gray-600'
-  }
-}
-
-const getStatusIcon = (estado: string) => {
-  switch (estado) {
-    case 'Pendiente':
-      return <Clock size={14} />
-    case 'Programada':
-      return <Calendar size={14} />
-    case 'En Curso':
-      return <Clock size={14} className="animate-pulse" />
-    case 'Completada':
-      return <CheckCircle size={14} />
-    case 'Cancelada':
-      return <XCircle size={14} />
-    default:
-      return null
-  }
+  return new Intl.DateTimeFormat('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(`${cirugia.fecha}T${cirugia.hora}`))
 }
 
 export default function CirugiasTable() {
   const [cirugias, setCirugias] = useState<Cirugia[]>(initialCirugias)
   const [selectedCirugia, setSelectedCirugia] = useState<Cirugia | null>(null)
   const [viewMode, setViewMode] = useState<'view' | 'edit' | null>(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [cancelSurgeryId, setCancelSurgeryId] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [showProgramarModal, setShowProgramarModal] = useState(false)
   const [showWeeklyPlanning, setShowWeeklyPlanning] = useState(false)
-  const [showWeeklyView, setShowWeeklyView] = useState(false)
 
   // Filtros
   const [filters, setFilters] = useState({
@@ -104,13 +64,15 @@ export default function CirugiasTable() {
     })
   }
 
-  const canDelete = (estado: string) => {
-    return estado === 'Programada' || estado === 'Cancelada' || estado === 'Pendiente'
+  const canCancel = (estado: string) => {
+    return estado === 'Programada' || estado === 'Pendiente'
   }
 
-  const handleDelete = (cirugia: Cirugia) => {
-    setCirugias(cirugias.filter((c) => c.id !== cirugia.id))
-    setShowDeleteConfirm(null)
+  const handleCancel = (cirugia: Cirugia) => {
+    setCirugias(cirugias.map((item) => (
+      item.id === cirugia.id ? { ...item, estado: 'Cancelada' } : item
+    )))
+    setCancelSurgeryId(null)
   }
 
   const handleSaveEdit = (updatedCirugia: Cirugia) => {
@@ -129,25 +91,20 @@ export default function CirugiasTable() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => setShowWeeklyView(true)}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            <CalendarDays size={18} />
-            Ver Esta Semana
-          </button>
-          <button
-            onClick={() => setShowWeeklyPlanning(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            <Calendar size={18} />
-            Planificacion Semanal
-          </button>
-          <button
+            type="button"
             onClick={() => setShowProgramarModal(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
           >
-            <Plus size={18} />
-            Programar
+            <Plus size={16} />
+            Nueva cirugía
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowWeeklyPlanning(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+          >
+            <Sparkles size={16} />
+            Generar planificación
           </button>
         </div>
       </div>
@@ -289,83 +246,84 @@ export default function CirugiasTable() {
       )}
 
       {/* Tabla */}
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted border-b border-border">
-            <tr>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">ID</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Paciente</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">DNI</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Cirujano</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Intervencion</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Fecha</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Hora</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Quirofano</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Prioridad</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Estado</th>
-              <th className="px-4 py-3 text-center font-semibold text-foreground">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredCirugias.map((cirugia, idx) => (
-              <tr key={cirugia.id} className={idx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
-                <td className="px-4 py-3 text-foreground font-mono text-xs">{cirugia.id}</td>
-                <td className="px-4 py-3 text-foreground font-medium">{cirugia.paciente}</td>
-                <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{cirugia.dni}</td>
-                <td className="px-4 py-3 text-foreground">{cirugia.cirujano}</td>
-                <td className="px-4 py-3 text-foreground">{cirugia.intervencion}</td>
-                <td className="px-4 py-3 text-foreground">{cirugia.fecha || '-'}</td>
-                <td className="px-4 py-3 text-foreground">{cirugia.hora || '-'}</td>
-                <td className="px-4 py-3 text-foreground">{cirugia.quirofano || '-'}</td>
-                <td className={`px-4 py-3 font-medium ${getPriorityColor(cirugia.prioridad)}`}>
-                  {cirugia.prioridad}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(cirugia.estado)}`}>
-                    {getStatusIcon(cirugia.estado)}
-                    {cirugia.estado}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-1 justify-center">
-                    <button
-                      onClick={() => {
-                        setSelectedCirugia(cirugia)
-                        setViewMode('view')
-                      }}
-                      className="p-2 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
-                      title="Ver detalle"
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedCirugia(cirugia)
-                        setViewMode('edit')
-                      }}
-                      className="p-2 hover:bg-amber-100 rounded-lg transition-colors text-amber-600"
-                      title="Editar"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(cirugia.id)}
-                      disabled={!canDelete(cirugia.estado)}
-                      className={`p-2 rounded-lg transition-colors ${
-                        canDelete(cirugia.estado)
-                          ? 'hover:bg-red-100 text-red-600 cursor-pointer'
-                          : 'text-gray-300 cursor-not-allowed'
-                      }`}
-                      title={canDelete(cirugia.estado) ? 'Eliminar' : 'No se puede eliminar'}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </td>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm">
+            <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3">Inicio</th>
+                <th className="px-4 py-3">Paciente</th>
+                <th className="px-4 py-3">Especialidad</th>
+                <th className="px-4 py-3">Intervenciones</th>
+                <th className="px-4 py-3">Sala</th>
+                <th className="px-4 py-3">Anestesia</th>
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Opciones</th>
+                <th className="px-4 py-3">Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredCirugias.map((cirugia) => (
+                <tr key={cirugia.id} className="hover:bg-muted/50">
+                  <td className="px-4 py-4 font-medium text-foreground">{formatDateTime(cirugia)}</td>
+                  <td className="px-4 py-4">
+                    <div className="font-medium text-foreground">{cirugia.paciente}</div>
+                    <div className="text-xs text-muted-foreground">DNI {cirugia.dni}</div>
+                  </td>
+                  <td className="px-4 py-4 text-foreground">{cirugia.especialidad}</td>
+                  <td className="px-4 py-4 text-foreground">{cirugia.intervencion || 'Sin intervenciones'}</td>
+                  <td className="px-4 py-4 text-foreground">{cirugia.quirofano || 'Sin sala'}</td>
+                  <td className="px-4 py-4 text-foreground">{cirugia.anestesia || 'Sin definir'}</td>
+                  <td className="px-4 py-4">
+                    <SurgeryStatusBadge status={cirugia.estado} />
+                  </td>
+                  <td className="px-4 py-4 text-foreground">Sin opciones</td>
+                  <td className="px-4 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCirugia(cirugia)
+                          setViewMode('view')
+                        }}
+                        aria-label="Ver cirugía"
+                        title="Ver cirugía"
+                        className="inline-flex rounded-md border border-slate-200 p-2 text-slate-700 transition-colors hover:bg-slate-50"
+                      >
+                        <Eye size={15} />
+                      </button>
+                      {cirugia.estado === 'Pendiente' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCirugia(cirugia)
+                            setViewMode('edit')
+                          }}
+                          aria-label="Editar cirugía"
+                          title="Editar cirugía"
+                          className="inline-flex rounded-md border border-blue-200 p-2 text-blue-700 transition-colors hover:bg-blue-50"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                      )}
+                      {canCancel(cirugia.estado) && (
+                        <button
+                          type="button"
+                          onClick={() => setCancelSurgeryId(cirugia.id)}
+                          aria-label="Cancelar cirugía"
+                          title="Cancelar cirugía"
+                          className="inline-flex rounded-md border border-red-200 p-2 text-red-700 transition-colors hover:bg-red-50"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {filteredCirugias.length === 0 && (
@@ -415,32 +373,28 @@ export default function CirugiasTable() {
         <WeeklyPlanningModal onClose={() => setShowWeeklyPlanning(false)} />
       )}
 
-      {showWeeklyView && (
-        <WeeklyPlanningModal onClose={() => setShowWeeklyView(false)} viewOnly={true} />
-      )}
-
-      {showDeleteConfirm && (
+      {cancelSurgeryId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-6 max-w-sm mx-4 border border-border">
-            <h2 className="text-lg font-bold mb-4 text-foreground">Confirmar eliminacion</h2>
+            <h2 className="text-lg font-bold mb-4 text-foreground">Cancelar cirugía</h2>
             <p className="text-muted-foreground mb-6">
-              Esta seguro de que desea eliminar esta cirugia? Esta accion no se puede deshacer.
+              ¿Estás seguro de que querés cancelar esta cirugía? La cirugía permanecerá visible con estado Cancelada.
             </p>
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setShowDeleteConfirm(null)}
+                onClick={() => setCancelSurgeryId(null)}
                 className="px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/80 transition-colors"
               >
-                Cancelar
+                Volver
               </button>
               <button
                 onClick={() => {
-                  const cirugia = cirugias.find((c) => c.id === showDeleteConfirm)
-                  if (cirugia) handleDelete(cirugia)
+                  const cirugia = cirugias.find((c) => c.id === cancelSurgeryId)
+                  if (cirugia) handleCancel(cirugia)
                 }}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
               >
-                Eliminar
+                Confirmar cancelación
               </button>
             </div>
           </div>
