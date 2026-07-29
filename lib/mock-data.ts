@@ -19,6 +19,14 @@ export interface Personal {
   rol: 'Cirujano' | 'Anestesista' | 'Instrumentador' | 'Ayudante' | 'Enfermero'
   especialidad: string
   estado: boolean
+  passwordInicial?: string
+}
+
+export interface Insumo {
+  id: string
+  nombre: string
+  stock: number
+  estado: boolean
 }
 
 export interface Quirofano {
@@ -230,17 +238,17 @@ export const mockAlertas: Alerta[] = [
 ]
 
 // ==================== INSUMOS DISPONIBLES ====================
-export const mockInsumos = [
-  { id: 'ins1', nombre: 'Placa de titanio', stock: 5 },
-  { id: 'ins2', nombre: 'Tornillos ortopédicos', stock: 50 },
-  { id: 'ins3', nombre: 'Suturas absorbibles', stock: 100 },
-  { id: 'ins4', nombre: 'Suturas no absorbibles', stock: 80 },
-  { id: 'ins5', nombre: 'Malla quirúrgica', stock: 20 },
-  { id: 'ins6', nombre: 'Marcapasos', stock: 3 },
-  { id: 'ins7', nombre: 'Lente intraocular', stock: 15 },
-  { id: 'ins8', nombre: 'Prótesis de cadera', stock: 4 },
-  { id: 'ins9', nombre: 'Clips hemostáticos', stock: 200 },
-  { id: 'ins10', nombre: 'Drenajes', stock: 30 },
+export const mockInsumos: Insumo[] = [
+  { id: 'ins1', nombre: 'Placa de titanio', stock: 5, estado: true },
+  { id: 'ins2', nombre: 'Tornillos ortopédicos', stock: 50, estado: true },
+  { id: 'ins3', nombre: 'Suturas absorbibles', stock: 100, estado: true },
+  { id: 'ins4', nombre: 'Suturas no absorbibles', stock: 80, estado: true },
+  { id: 'ins5', nombre: 'Malla quirúrgica', stock: 20, estado: true },
+  { id: 'ins6', nombre: 'Marcapasos', stock: 3, estado: true },
+  { id: 'ins7', nombre: 'Lente intraocular', stock: 15, estado: true },
+  { id: 'ins8', nombre: 'Prótesis de cadera', stock: 4, estado: true },
+  { id: 'ins9', nombre: 'Clips hemostáticos', stock: 200, estado: true },
+  { id: 'ins10', nombre: 'Drenajes', stock: 30, estado: false },
 ]
 
 // ==================== HELPERS ====================

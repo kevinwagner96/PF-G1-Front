@@ -1,28 +1,22 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Edit2, Trash2, X, Check } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X } from 'lucide-react'
 import { mockPersonal, Personal } from '@/lib/mock-data'
 
 const roles = ['Cirujano', 'Anestesista', 'Instrumentador', 'Ayudante', 'Enfermero'] as const
-const especialidades = [
-  'Traumatología', 'Oftalmología', 'Cirugía General', 'Cardiología', 'Neurología',
-  'Urología', 'Ortopedia', 'Ginecología', 'Vascular', 'Plástica', 'Anestesiología', 
-  'Instrumentación', 'Enfermería'
-]
-
 export default function PersonalList() {
-  const [personal, setPersonal] = useState<Personal[]>(mockPersonal)
+  const personal = mockPersonal
   const [search, setSearch] = useState('')
   const [filterRol, setFilterRol] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState<Omit<Personal, 'id'>>({
+  const [passwordInicial, setPasswordInicial] = useState('')
+  const [formData, setFormData] = useState<Pick<Personal, 'nombre' | 'dni' | 'email' | 'rol' | 'estado'>>({
     nombre: '',
     dni: '',
     email: '',
     rol: 'Cirujano',
-    especialidad: '',
     estado: true,
   })
 
@@ -40,7 +34,6 @@ export default function PersonalList() {
         dni: p.dni,
         email: p.email,
         rol: p.rol,
-        especialidad: p.especialidad,
         estado: p.estado,
       })
     } else {
@@ -50,31 +43,14 @@ export default function PersonalList() {
         dni: '',
         email: '',
         rol: 'Cirujano',
-        especialidad: '',
         estado: true,
       })
     }
     setShowModal(true)
+    setPasswordInicial('')
   }
 
-  const handleSave = () => {
-    if (editingId) {
-      setPersonal(personal.map(p => p.id === editingId ? { ...p, ...formData } : p))
-    } else {
-      setPersonal([...personal, { id: `p${Date.now()}`, ...formData }])
-    }
-    setShowModal(false)
-  }
-
-  const handleDelete = (id: string) => {
-    if (confirm('Esta seguro de eliminar este registro?')) {
-      setPersonal(personal.filter(p => p.id !== id))
-    }
-  }
-
-  const handleToggleEstado = (id: string) => {
-    setPersonal(personal.map(p => p.id === id ? { ...p, estado: !p.estado } : p))
-  }
+  const handleSave = () => setShowModal(false)
 
   return (
     <div className="space-y-6">
@@ -126,7 +102,6 @@ export default function PersonalList() {
               <th className="px-4 py-3 text-left font-semibold text-foreground">DNI</th>
               <th className="px-4 py-3 text-left font-semibold text-foreground">Email</th>
               <th className="px-4 py-3 text-left font-semibold text-foreground">Rol</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Especialidad</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Estado</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Acciones</th>
             </tr>
@@ -147,10 +122,10 @@ export default function PersonalList() {
                     {p.rol}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-foreground">{p.especialidad}</td>
                 <td className="px-4 py-3 text-center">
                   <button
-                    onClick={() => handleToggleEstado(p.id)}
+                    type="button"
+                    aria-label={`Estado de ${p.nombre}`}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       p.estado ? 'bg-green-500' : 'bg-gray-300'
                     }`}
@@ -166,12 +141,14 @@ export default function PersonalList() {
                   <div className="flex gap-1 justify-center">
                     <button
                       onClick={() => handleOpenModal(p)}
+                      aria-label={`Editar ${p.nombre}`}
                       className="p-2 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
                     >
                       <Edit2 size={16} />
                     </button>
                     <button
-                      onClick={() => handleDelete(p.id)}
+                      type="button"
+                      aria-label={`Eliminar ${p.nombre}`}
                       className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                     >
                       <Trash2 size={16} />
@@ -229,8 +206,11 @@ export default function PersonalList() {
                   className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              {!editingId && <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Contraseña inicial *</label>
+                <input type="password" value={passwordInicial} onChange={(e) => setPasswordInicial(e.target.value)} placeholder="Mínimo 6 caracteres" className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>}
+              <div>
                   <label className="block text-sm font-medium text-foreground mb-2">Rol *</label>
                   <select
                     value={formData.rol}
@@ -241,20 +221,6 @@ export default function PersonalList() {
                       <option key={rol} value={rol}>{rol}</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Especialidad</label>
-                  <select
-                    value={formData.especialidad}
-                    onChange={(e) => setFormData(prev => ({ ...prev, especialidad: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Seleccione...</option>
-                    {especialidades.map(esp => (
-                      <option key={esp} value={esp}>{esp}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium text-foreground">Estado activo</label>
@@ -282,8 +248,7 @@ export default function PersonalList() {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={!formData.nombre || !formData.dni || !formData.email}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium"
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
                 >
                   {editingId ? 'Guardar Cambios' : 'Crear Personal'}
                 </button>

@@ -20,6 +20,7 @@ import {
   FileText,
   Settings,
   UserCircle,
+  ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { apiRequest } from '@/lib/api'
@@ -50,6 +51,7 @@ const menuItems: MenuItem[] = [
   { id: 'mi-agenda', label: 'Mi Agenda', icon: <UserCircle size={20} />, href: '/mi-agenda' },
   { id: 'quirofanos', label: 'Quirofanos', icon: <Stethoscope size={20} />, href: '/quirofanos' },
   { id: 'personal', label: 'Personal', icon: <Users size={20} />, href: '/personal' },
+  { id: 'usuarios', label: 'Usuarios', icon: <ShieldCheck size={20} />, href: '/usuarios' },
   { id: 'insumos', label: 'Insumos', icon: <Package size={20} />, href: '/insumos' },
   { id: 'pacientes', label: 'Pacientes', icon: <UserCog size={20} />, href: '/pacientes' },
   { id: 'tipos-cirugia', label: 'Tipos de Cirugia', icon: <FileText size={20} />, href: '/tipos-cirugia' },
@@ -126,7 +128,7 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   }
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen">
+    <div className="w-64 shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen">
       <div className="p-6 border-b border-gray-200">
         <h2 className="text-xl font-bold text-blue-900 flex items-center gap-2">
           <Stethoscope size={24} className="text-blue-600" />

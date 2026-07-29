@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Edit2, Trash2, X, Stethoscope } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Stethoscope, Search } from 'lucide-react'
 import { mockQuirofanos, Quirofano, getCirugiasHoy } from '@/lib/mock-data'
 
 export default function QuirofanosList() {
-  const [quirofanos, setQuirofanos] = useState<Quirofano[]>(mockQuirofanos)
+  const quirofanos = mockQuirofanos
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<'todos' | 'disponibles' | 'no-disponibles'>('todos')
   const [formData, setFormData] = useState<Omit<Quirofano, 'id'>>({
     nombre: '',
     piso: '',
@@ -39,24 +41,14 @@ export default function QuirofanosList() {
     setShowModal(true)
   }
 
-  const handleSave = () => {
-    if (editingId) {
-      setQuirofanos(quirofanos.map(q => q.id === editingId ? { ...q, ...formData } : q))
-    } else {
-      setQuirofanos([...quirofanos, { id: `qf${Date.now()}`, ...formData }])
-    }
-    setShowModal(false)
-  }
+  const handleSave = () => setShowModal(false)
 
-  const handleDelete = (id: string) => {
-    if (confirm('Esta seguro de eliminar este quirofano?')) {
-      setQuirofanos(quirofanos.filter(q => q.id !== id))
-    }
-  }
-
-  const handleToggleDisponible = (id: string) => {
-    setQuirofanos(quirofanos.map(q => q.id === id ? { ...q, disponible: !q.disponible } : q))
-  }
+  const filteredQuirofanos = quirofanos.filter(q => {
+    if (search && !q.nombre.toLowerCase().includes(search.toLowerCase())) return false
+    if (filter === 'disponibles' && !q.disponible) return false
+    if (filter === 'no-disponibles' && q.disponible) return false
+    return true
+  })
 
   return (
     <div className="space-y-6">
@@ -75,9 +67,14 @@ export default function QuirofanosList() {
         </button>
       </div>
 
+      <div className="flex gap-4 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre..." className="w-full pl-10 pr-4 py-2.5 border border-input rounded-lg bg-background" /></div>
+        <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="px-4 py-2.5 border border-input rounded-lg bg-background"><option value="todos">Todos los estados</option><option value="disponibles">Disponibles</option><option value="no-disponibles">No disponibles</option></select>
+      </div>
+
       {/* Grid de quirofanos */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {quirofanos.map((quirofano) => {
+        {filteredQuirofanos.map((quirofano) => {
           const statusInfo = getQuirofanoStatus(quirofano)
           const cirugiaActual = cirugiasHoy.find(c => c.quirofanoId === quirofano.id && c.estado === 'En Curso')
           const proximaCirugia = cirugiasHoy.find(c => c.quirofanoId === quirofano.id && c.estado === 'Programada')
@@ -135,7 +132,8 @@ export default function QuirofanosList() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Disponible:</span>
                   <button
-                    onClick={() => handleToggleDisponible(quirofano.id)}
+                    type="button"
+                    aria-label={`Disponibilidad de ${quirofano.nombre}`}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       quirofano.disponible ? 'bg-green-500' : 'bg-gray-300'
                     }`}
@@ -150,12 +148,14 @@ export default function QuirofanosList() {
                 <div className="flex gap-1">
                   <button
                     onClick={() => handleOpenModal(quirofano)}
+                    aria-label={`Editar ${quirofano.nombre}`}
                     className="p-2 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
                   >
                     <Edit2 size={16} />
                   </button>
                   <button
-                    onClick={() => handleDelete(quirofano.id)}
+                    type="button"
+                    aria-label={`Eliminar ${quirofano.nombre}`}
                     className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                   >
                     <Trash2 size={16} />
@@ -192,7 +192,7 @@ export default function QuirofanosList() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Piso *</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Ubicacion / Piso (opcional)</label>
                 <input
                   type="text"
                   value={formData.piso}
@@ -227,8 +227,7 @@ export default function QuirofanosList() {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={!formData.nombre || !formData.piso}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium"
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
                 >
                   {editingId ? 'Guardar' : 'Crear'}
                 </button>

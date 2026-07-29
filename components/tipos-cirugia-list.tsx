@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Edit2, Trash2, X, FileText } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X } from 'lucide-react'
 import { mockTiposCirugia, TipoCirugia } from '@/lib/mock-data'
 
 const especialidades = [
@@ -12,16 +12,15 @@ const especialidades = [
 const complejidades = ['Baja', 'Media', 'Alta'] as const
 
 export default function TiposCirugiaList() {
-  const [tipos, setTipos] = useState<TipoCirugia[]>(mockTiposCirugia)
+  const tipos = mockTiposCirugia
   const [search, setSearch] = useState('')
   const [filterEspecialidad, setFilterEspecialidad] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState<Omit<TipoCirugia, 'id'>>({
+  const [formData, setFormData] = useState<Pick<TipoCirugia, 'nombre' | 'especialidad' | 'complejidad' | 'descripcion' | 'estado'>>({
     nombre: '',
     especialidad: '',
     complejidad: 'Media',
-    duracionEstimada: 60,
     descripcion: '',
     estado: true,
   })
@@ -39,7 +38,6 @@ export default function TiposCirugiaList() {
         nombre: t.nombre,
         especialidad: t.especialidad,
         complejidad: t.complejidad,
-        duracionEstimada: t.duracionEstimada,
         descripcion: t.descripcion,
         estado: t.estado,
       })
@@ -49,7 +47,6 @@ export default function TiposCirugiaList() {
         nombre: '',
         especialidad: '',
         complejidad: 'Media',
-        duracionEstimada: 60,
         descripcion: '',
         estado: true,
       })
@@ -57,24 +54,7 @@ export default function TiposCirugiaList() {
     setShowModal(true)
   }
 
-  const handleSave = () => {
-    if (editingId) {
-      setTipos(tipos.map(t => t.id === editingId ? { ...t, ...formData } : t))
-    } else {
-      setTipos([...tipos, { id: `tc${Date.now()}`, ...formData }])
-    }
-    setShowModal(false)
-  }
-
-  const handleDelete = (id: string) => {
-    if (confirm('Esta seguro de eliminar este tipo de cirugia?')) {
-      setTipos(tipos.filter(t => t.id !== id))
-    }
-  }
-
-  const handleToggleEstado = (id: string) => {
-    setTipos(tipos.map(t => t.id === id ? { ...t, estado: !t.estado } : t))
-  }
+  const handleSave = () => setShowModal(false)
 
   const getComplejidadColor = (complejidad: string) => {
     switch (complejidad) {
@@ -138,7 +118,6 @@ export default function TiposCirugiaList() {
               <th className="px-4 py-3 text-left font-semibold text-foreground">Nombre</th>
               <th className="px-4 py-3 text-left font-semibold text-foreground">Especialidad</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Complejidad</th>
-              <th className="px-4 py-3 text-center font-semibold text-foreground">Duracion Est.</th>
               <th className="px-4 py-3 text-left font-semibold text-foreground">Descripcion</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Estado</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Acciones</th>
@@ -154,11 +133,11 @@ export default function TiposCirugiaList() {
                     {tipo.complejidad}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-center text-foreground">{tipo.duracionEstimada} min</td>
                 <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate">{tipo.descripcion}</td>
                 <td className="px-4 py-3 text-center">
                   <button
-                    onClick={() => handleToggleEstado(tipo.id)}
+                    type="button"
+                    aria-label={`Estado de ${tipo.nombre}`}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       tipo.estado ? 'bg-green-500' : 'bg-gray-300'
                     }`}
@@ -174,12 +153,14 @@ export default function TiposCirugiaList() {
                   <div className="flex gap-1 justify-center">
                     <button
                       onClick={() => handleOpenModal(tipo)}
+                      aria-label={`Editar ${tipo.nombre}`}
                       className="p-2 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
                     >
                       <Edit2 size={16} />
                     </button>
                     <button
-                      onClick={() => handleDelete(tipo.id)}
+                      type="button"
+                      aria-label={`Eliminar ${tipo.nombre}`}
                       className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                     >
                       <Trash2 size={16} />
@@ -248,17 +229,6 @@ export default function TiposCirugiaList() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Duracion estimada (minutos)</label>
-                <input
-                  type="number"
-                  min="15"
-                  step="15"
-                  value={formData.duracionEstimada}
-                  onChange={(e) => setFormData(prev => ({ ...prev, duracionEstimada: parseInt(e.target.value) || 60 }))}
-                  className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Descripcion</label>
                 <textarea
                   value={formData.descripcion}
@@ -294,8 +264,7 @@ export default function TiposCirugiaList() {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={!formData.nombre || !formData.especialidad}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium"
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
                 >
                   {editingId ? 'Guardar' : 'Crear'}
                 </button>
