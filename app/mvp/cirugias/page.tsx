@@ -14,7 +14,9 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Stethoscope,
   Trash2,
+  UserRound,
   X,
   XCircle,
 } from 'lucide-react'
@@ -30,6 +32,12 @@ import {
 } from '@/components/ui/dialog'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
+import ConfirmActionDialog from '@/components/confirm-action-dialog'
+import FeedbackMessage from '@/components/feedback-message'
+import FormSection from '@/components/form-section'
+import PageHeader from '@/components/page-header'
+import StatusBadge from '@/components/status-badge'
+import { toast } from '@/hooks/use-toast'
 
 const CREATE_PLANNING_PERMISSION = 'plannings.can_create_planning'
 const APPROVE_PLANNING_PERMISSION = 'plannings.can_approve_planning'
@@ -191,28 +199,12 @@ function getCurrentWeekStart() {
   return monday.toISOString().split('T')[0]
 }
 
-function getStatusLabel(status: PlanningStatus) {
-  if (status === 'planning') return 'Planificando'
-  if (status === 'pending_approval') return 'Pendiente de aprobación'
-  if (status === 'approved') return 'Aprobada'
-  if (status === 'rejected') return 'Rechazada'
-  return 'Fallida'
-}
-
-function getStatusClasses(status: PlanningStatus) {
-  if (status === 'approved') return 'border-purple-200 bg-purple-50 text-purple-700'
-  if (status === 'pending_approval') return 'border-amber-200 bg-amber-50 text-amber-800'
-  if (status === 'rejected') return 'border-slate-200 bg-slate-50 text-slate-700'
-  if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
-  return 'border-blue-200 bg-blue-50 text-blue-700'
-}
-
-function getStatusIcon(status: PlanningStatus) {
-  if (status === 'approved') return <CheckCircle size={16} />
-  if (status === 'pending_approval') return <Clock size={16} />
-  if (status === 'failed') return <XCircle size={16} />
-  if (status === 'rejected') return <XCircle size={16} />
-  return <Activity size={16} className="animate-pulse" />
+function formatPlanningWeek(weekStart?: string) {
+  const start = weekStart ? new Date(`${weekStart}T12:00:00`) : new Date(`${getCurrentWeekStart()}T12:00:00`)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 4)
+  const formatDayMonth = (date: Date) => `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`
+  return `Semana del ${formatDayMonth(start)} al ${formatDayMonth(end)}`
 }
 
 function reverseMap(map?: Record<string, number>) {
@@ -270,6 +262,15 @@ function buildSurgeryPayload(form: SurgeryFormState) {
   }
 }
 
+function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-1 text-sm font-medium text-slate-900">{value}</div>
+    </div>
+  )
+}
+
 
 export default function MvpCirugiasPage() {
   const router = useRouter()
@@ -298,7 +299,11 @@ export default function MvpCirugiasPage() {
   const [rejectionReason, setRejectionReason] = useState('')
   const [showPendingOutside, setShowPendingOutside] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false)
+  const [isRejectConfirmOpen, setIsRejectConfirmOpen] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [filters, setFilters] = useState({
+    search: '',
     estado: '',
     quirofano: '',
     fechaDesde: '',
@@ -341,7 +346,6 @@ export default function MvpCirugiasPage() {
         ...current,
         intervention_id: current.intervention_id || data.interventions[0]?.id || '',
         tipo_anestesia_id: current.tipo_anestesia_id || data.anesthesia_types[0]?.id || '',
-        cirujano_forzado_id: current.cirujano_forzado_id || data.surgeons[0]?.id || '',
       }))
     } catch (fetchError) {
       setSurgeryError(fetchError instanceof Error ? fetchError.message : 'No se pudieron cargar los catálogos')
@@ -445,6 +449,7 @@ export default function MvpCirugiasPage() {
       setIsPlanningModalOpen(true)
       setShowRejectReason(false)
       setRejectionReason('')
+      toast({ title: 'Planificación iniciada', description: `${formatPlanningWeek(getCurrentWeekStart())}. El progreso se actualizará automáticamente.` })
     } catch (planningRequestError) {
       setPlanningError(
         planningRequestError instanceof Error
@@ -463,7 +468,7 @@ export default function MvpCirugiasPage() {
       ...emptySurgeryForm,
       intervention_id: catalogs?.interventions[0]?.id ?? '',
       tipo_anestesia_id: catalogs?.anesthesia_types[0]?.id ?? '',
-      cirujano_forzado_id: catalogs?.surgeons[0]?.id ?? '',
+      cirujano_forzado_id: '',
     })
     setIsSurgeryModalOpen(true)
   }
@@ -476,6 +481,10 @@ export default function MvpCirugiasPage() {
   }
 
   const saveSurgery = async () => {
+    if (!isSurgeryFormValid) {
+      setSurgeryError('Revisá los campos obligatorios antes de guardar.')
+      return
+    }
     setIsSavingSurgery(true)
     setSurgeryError(null)
     try {
@@ -488,6 +497,12 @@ export default function MvpCirugiasPage() {
       })
       setIsSurgeryModalOpen(false)
       setEditingSurgery(null)
+      toast({
+        title: editingSurgery ? 'Cirugía actualizada' : 'Cirugía registrada',
+        description: editingSurgery
+          ? 'Los datos operativos se guardaron correctamente.'
+          : 'La solicitud quedó pendiente de asignación.',
+      })
       await refreshCirugias()
       if (isPlanningModalOpen) await refreshPreflight()
     } catch (saveError) {
@@ -503,6 +518,7 @@ export default function MvpCirugiasPage() {
     setSurgeryError(null)
     try {
       await apiRequest<CirugiaReal>(`/surgeries/${cancelSurgery.id}/cancel/`, { method: 'POST' })
+      toast({ title: 'Cirugía cancelada', description: `${cancelSurgery.paciente} quedó con estado Cancelada y liberó su programación.` })
       setCancelSurgery(null)
       await refreshCirugias()
       if (isPlanningModalOpen) await refreshPreflight()
@@ -520,6 +536,8 @@ export default function MvpCirugiasPage() {
     try {
       await apiRequest<void>(`/plannings/${planning.scheduler_uuid}/`, { method: 'DELETE' })
       setPlanning(null)
+      setIsDeleteConfirmOpen(false)
+      toast({ title: 'Planificación eliminada', description: 'Ya podés corregir las solicitudes y generar una nueva propuesta.' })
     } catch (deleteError) {
       setPlanningError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar la planificación')
     } finally {
@@ -537,6 +555,8 @@ export default function MvpCirugiasPage() {
         body: JSON.stringify({}),
       })
       setPlanning(data)
+      setIsApproveConfirmOpen(false)
+      toast({ title: 'Planificación aprobada', description: 'Las cirugías asignadas pasaron al estado Programada.' })
       await refreshCirugias()
     } catch (approvalError) {
       setPlanningError(approvalError instanceof Error ? approvalError.message : 'No se pudo aprobar la planificación')
@@ -561,6 +581,8 @@ export default function MvpCirugiasPage() {
       })
       setPlanning(data)
       setShowRejectReason(false)
+      setIsRejectConfirmOpen(false)
+      toast({ title: 'Planificación rechazada', description: 'El motivo quedó registrado. El administrador puede corregir las cirugías y regenerar.' })
     } catch (rejectError) {
       setPlanningError(rejectError instanceof Error ? rejectError.message : 'No se pudo rechazar la planificación')
     } finally {
@@ -610,6 +632,8 @@ export default function MvpCirugiasPage() {
   const filteredCirugias = useMemo(() => {
     return cirugias.filter((cirugia) => {
       const surgeryDate = cirugia.inicio?.slice(0, 10) ?? ''
+      const searchable = `${cirugia.paciente} ${cirugia.dni}`.toLowerCase()
+      if (filters.search && !searchable.includes(filters.search.toLowerCase().trim())) return false
       if (filters.estado && cirugia.estado !== filters.estado) return false
       if (filters.quirofano && cirugia.salaId !== filters.quirofano) return false
       if (filters.fechaDesde && (!surgeryDate || surgeryDate < filters.fechaDesde)) return false
@@ -621,6 +645,7 @@ export default function MvpCirugiasPage() {
   }, [cirugias, filters])
   const activeFiltersCount = Object.values(filters).filter(Boolean).length
   const clearFilters = () => setFilters({
+    search: '',
     estado: '',
     quirofano: '',
     fechaDesde: '',
@@ -630,6 +655,7 @@ export default function MvpCirugiasPage() {
   })
   const canReviewPlanning = canApprovePlanning && planning?.status === 'pending_approval'
   const canDeletePlanning = canCreatePlanning
+  const hasActivePlanning = planning?.status === 'planning' || planning?.status === 'pending_approval'
   const canStartPlanning =
     canCreatePlanning &&
     planning?.status !== 'planning' &&
@@ -637,6 +663,21 @@ export default function MvpCirugiasPage() {
     preflight?.can_plan !== false
   const modalTitle = canReviewPlanning ? 'Revisar planificación semanal' : 'Generar planificación semanal'
   const shouldShowPendingApprovalSnack = canReviewPlanning && !isPlanningModalOpen
+  const formErrors = useMemo(() => {
+    const next: Partial<Record<keyof SurgeryFormState, string>> = {}
+    if (!surgeryForm.dni.trim()) next.dni = 'Ingresá el DNI del paciente.'
+    else if (!/^\d{7,10}$/.test(surgeryForm.dni.trim())) next.dni = 'Usá entre 7 y 10 números, sin puntos.'
+    if (!surgeryForm.paciente.trim()) next.paciente = 'Ingresá el nombre del paciente.'
+    if (!surgeryForm.intervention_id) next.intervention_id = 'Seleccioná una intervención.'
+    if (!Number.isFinite(Number(surgeryForm.duracion_estimada_minutos)) || Number(surgeryForm.duracion_estimada_minutos) <= 0) {
+      next.duracion_estimada_minutos = 'Ingresá una duración mayor a 0 minutos.'
+    }
+    if (!Number.isFinite(Number(surgeryForm.prioridad_clinica)) || Number(surgeryForm.prioridad_clinica) <= 0) {
+      next.prioridad_clinica = 'Ingresá una prioridad mayor a 0.'
+    }
+    return next
+  }, [surgeryForm])
+  const isSurgeryFormValid = catalogs !== null && Object.keys(formErrors).length === 0
 
   if (isLoading || !isAuthenticated) {
     return (
@@ -652,19 +693,20 @@ export default function MvpCirugiasPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-auto">
           <div className="p-6 md:p-8">
-            <div className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold text-foreground">Cirugías</h1>
-                <p className="text-muted-foreground mt-1">
-                  MVP - Programacion de Agenda con IA. Datos reales desde PostgreSQL.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+            <PageHeader
+              className="mb-6"
+              eyebrow="MVP · Datos reales"
+              title="Cirugías"
+              description="Registrá solicitudes quirúrgicas, revisá su estado y generá la agenda semanal asistida por IA."
+              actions={
+                <>
                 {canCreatePlanning && (
                   <button
                     type="button"
                     onClick={openCreateSurgery}
-                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+                    disabled={hasActivePlanning}
+                    title={hasActivePlanning ? 'Finalizá la planificación activa antes de modificar cirugías' : 'Registrar una nueva cirugía'}
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     <Plus size={16} />
                     Nueva cirugía
@@ -690,8 +732,20 @@ export default function MvpCirugiasPage() {
                     Ver planificación
                   </button>
                 )}
-              </div>
-            </div>
+                </>
+              }
+            />
+
+            {planning?.status === 'planning' && !isPlanningModalOpen && (
+              <FeedbackMessage className="mb-4" title="Planificación en proceso">
+                {formatPlanningWeek(planning.input_payload.week_start)} · {progress}% completado. Podés seguir trabajando y volver a revisar el progreso.
+              </FeedbackMessage>
+            )}
+            {planning?.status === 'pending_approval' && canCreatePlanning && (
+              <FeedbackMessage className="mb-4" tone="warning" title="Edición temporalmente bloqueada">
+                Hay una planificación pendiente de revisión. Para evitar inconsistencias, no se pueden crear, editar ni cancelar cirugías hasta que sea aprobada o rechazada.
+              </FeedbackMessage>
+            )}
 
             <Dialog open={isPlanningModalOpen} onOpenChange={setIsPlanningModalOpen}>
               <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[min(1380px,calc(100vw-2rem))]">
@@ -702,16 +756,11 @@ export default function MvpCirugiasPage() {
                       <DialogDescription>
                         {canReviewPlanning
                           ? 'Revisá la propuesta generada por IA antes de confirmar la agenda.'
-                          : `${pendingCirugiasCount} cirugías pendientes para planificar esta semana.`}
+                          : `${pendingCirugiasCount} cirugías pendientes para planificar. ${formatPlanningWeek(planning?.input_payload.week_start)}`}
                       </DialogDescription>
                     </div>
                     {planning ? (
-                      <span
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${getStatusClasses(planning.status)}`}
-                      >
-                        {getStatusIcon(planning.status)}
-                        {getStatusLabel(planning.status)}
-                      </span>
+                      <StatusBadge kind="planning" status={planning.status} />
                     ) : (
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
                         Sin ejecución iniciada
@@ -732,6 +781,7 @@ export default function MvpCirugiasPage() {
                         <p className="mt-1 text-sm text-slate-600">
                           Generá una propuesta automática para organizar quirófanos, turnos y equipos disponibles.
                         </p>
+                        <p className="mt-2 text-xs font-medium text-blue-700">{formatPlanningWeek()}</p>
                       </div>
                     </div>
                   </div>
@@ -789,6 +839,7 @@ export default function MvpCirugiasPage() {
                         style={{ width: `${progress}%` }}
                       />
                     </div>
+                    <p className="mt-2 text-xs text-slate-500">La propuesta se actualiza automáticamente cada 2,5 segundos. Podés cerrar esta ventana sin interrumpir el proceso.</p>
                   </div>
                 )}
 
@@ -909,9 +960,9 @@ export default function MvpCirugiasPage() {
                         className="flex w-full items-center justify-between gap-3 text-left"
                       >
                         <div>
-                          <h3 className="font-semibold text-amber-950">{pendingSurgeries.length} quedan afuera</h3>
+                          <h3 className="font-semibold text-amber-950">Cirugías no asignadas · {pendingSurgeries.length}</h3>
                           <p className="mt-1 text-xs text-amber-700">
-                            Tocá para {showPendingOutside ? 'ocultar' : 'ver'} las cirugías no incluidas en esta propuesta.
+                            {showPendingOutside ? 'Ocultá' : 'Revisá'} las solicitudes que no pudieron incluirse en esta propuesta.
                           </p>
                         </div>
                         <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-800 shadow-sm">
@@ -942,7 +993,7 @@ export default function MvpCirugiasPage() {
                     {planning && canDeletePlanning && (
                       <button
                         type="button"
-                        onClick={deletePlanning}
+                        onClick={() => setIsDeleteConfirmOpen(true)}
                         disabled={isDeletingPlanning || planning.status === 'planning' || planning.status === 'pending_approval'}
                         className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
                       >
@@ -976,7 +1027,11 @@ export default function MvpCirugiasPage() {
                           )}
                           <button
                             type="button"
-                            onClick={showRejectReason ? rejectPlanning : () => setShowRejectReason(true)}
+                            onClick={showRejectReason
+                              ? () => rejectionReason.trim()
+                                ? setIsRejectConfirmOpen(true)
+                                : setPlanningError('Ingresá un motivo para rechazar la planificación')
+                              : () => setShowRejectReason(true)}
                             disabled={isRejectingPlanning}
                             className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
                           >
@@ -986,7 +1041,7 @@ export default function MvpCirugiasPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={approvePlanning}
+                          onClick={() => setIsApproveConfirmOpen(true)}
                           disabled={isApprovingPlanning}
                           className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
                         >
@@ -1013,7 +1068,18 @@ export default function MvpCirugiasPage() {
               </DialogContent>
             </Dialog>
 
-            <div className="mb-4 flex items-center gap-3">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <label className="relative min-w-[280px] flex-1">
+                <span className="sr-only">Buscar por paciente o DNI</span>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={17} />
+                <input
+                  type="search"
+                  value={filters.search}
+                  onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+                  placeholder="Buscar por paciente o DNI..."
+                  className="w-full rounded-lg border border-input bg-background py-2.5 pl-10 pr-4 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => setShowFilters((current) => !current)}
@@ -1024,7 +1090,7 @@ export default function MvpCirugiasPage() {
                 }`}
               >
                 <ListFilter size={18} />
-                Filtros
+                Más filtros
                 {activeFiltersCount > 0 && (
                   <span className="ml-1 rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">
                     {activeFiltersCount}
@@ -1041,7 +1107,7 @@ export default function MvpCirugiasPage() {
                   Limpiar filtros
                 </button>
               )}
-              <div className="ml-auto flex gap-2">
+              <div className="ml-auto flex flex-wrap gap-2">
                 {['Pendiente', 'Programada', 'En Curso', 'Completada', 'Cancelada'].map((status) => (
                   <button
                     type="button"
@@ -1149,8 +1215,9 @@ export default function MvpCirugiasPage() {
                   Cargando cirugías...
                 </div>
               ) : error ? (
-                <div className="flex min-h-64 items-center justify-center text-red-600">
-                  {error}
+                <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-6 text-center text-red-700">
+                  <p>{error}</p>
+                  <button type="button" onClick={refreshCirugias} className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium hover:bg-red-50"><RefreshCw size={15} />Reintentar</button>
                 </div>
               ) : cirugias.length === 0 ? (
                 <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
@@ -1166,22 +1233,21 @@ export default function MvpCirugiasPage() {
                   <Search size={44} className="mb-4 text-slate-300" />
                   <h3 className="text-lg font-semibold text-slate-900">No hay resultados</h3>
                   <p className="mt-2 max-w-md text-sm text-slate-500">
-                    Probá cambiar el estado, la especialidad o el texto de búsqueda.
+                    Probá cambiar el estado, los filtros avanzados o el texto de búsqueda.
                   </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-sm">
+                  <table className="w-full min-w-[1120px] text-sm">
                     <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
                       <tr>
                         <th className="px-4 py-3">Inicio</th>
                         <th className="px-4 py-3">Paciente</th>
-                        <th className="px-4 py-3">Especialidad</th>
-                        <th className="px-4 py-3">Intervenciones</th>
-                        <th className="px-4 py-3">Sala</th>
-                        <th className="px-4 py-3">Anestesia</th>
+                        <th className="px-4 py-3">Intervención</th>
+                        <th className="px-4 py-3">Cirujano</th>
+                        <th className="px-4 py-3">Quirófano</th>
+                        <th className="px-4 py-3">Duración</th>
                         <th className="px-4 py-3">Estado</th>
-                        <th className="px-4 py-3">Opciones</th>
                         <th className="px-4 py-3">Acciones</th>
                       </tr>
                     </thead>
@@ -1195,24 +1261,15 @@ export default function MvpCirugiasPage() {
                             <div className="font-medium text-foreground">{cirugia.paciente}</div>
                             <div className="text-xs text-muted-foreground">DNI {cirugia.dni}</div>
                           </td>
-                          <td className="px-4 py-4 text-foreground">{cirugia.especialidad}</td>
                           <td className="px-4 py-4 text-foreground">
-                            {cirugia.intervenciones.length > 0
-                              ? cirugia.intervenciones.join(', ')
-                              : 'Sin intervenciones'}
+                            <div className="font-medium">{cirugia.intervenciones.join(', ') || 'Sin intervención'}</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">{cirugia.especialidad}</div>
                           </td>
+                          <td className="px-4 py-4 text-foreground">{cirugia.cirujanoForzado?.nombre ?? 'Sin asignar'}</td>
                           <td className="px-4 py-4 text-foreground">{cirugia.sala ?? 'Sin sala'}</td>
-                          <td className="px-4 py-4 text-foreground">
-                            {cirugia.anestesia ?? 'Sin definir'}
-                          </td>
+                          <td className="px-4 py-4 text-foreground">{cirugia.duracion_estimada_minutos} min</td>
                           <td className="px-4 py-4">
                             <SurgeryStatusBadge status={cirugia.estado} />
-                          </td>
-                          <td className="px-4 py-4 text-foreground">
-                            {[
-                              cirugia.byer ? 'Byer' : null,
-                              cirugia.sedacion ? 'Sedación' : null,
-                            ].filter(Boolean).join(' · ') || 'Sin opciones'}
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex flex-wrap gap-2">
@@ -1225,7 +1282,7 @@ export default function MvpCirugiasPage() {
                               >
                                 <Eye size={15} />
                               </button>
-                              {canCreatePlanning && cirugia.estado === 'Pendiente' && (
+                              {canCreatePlanning && !hasActivePlanning && cirugia.estado === 'Pendiente' && (
                                 <button
                                   type="button"
                                   onClick={() => openEditSurgery(cirugia)}
@@ -1236,7 +1293,7 @@ export default function MvpCirugiasPage() {
                                   <Edit3 size={15} />
                                 </button>
                               )}
-                              {canCreatePlanning && ['Pendiente', 'Programada'].includes(cirugia.estado) && (
+                              {canCreatePlanning && !hasActivePlanning && ['Pendiente', 'Programada'].includes(cirugia.estado) && (
                                 <button
                                   type="button"
                                   onClick={() => setCancelSurgery(cirugia)}
@@ -1269,137 +1326,50 @@ export default function MvpCirugiasPage() {
                 : 'Registrá una solicitud quirúrgica pendiente de asignación.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="text-sm font-medium text-slate-700">
-              DNI
-              <input
-                value={surgeryForm.dni}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, dni: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Paciente
-              <input
-                value={surgeryForm.paciente}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, paciente: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Edad
-              <input
-                type="number"
-                min="0"
-                value={surgeryForm.edad}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, edad: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Obra social
-              <input
-                value={surgeryForm.obra_social}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, obra_social: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 md:col-span-2">
-              Intervención
-              <select
-                value={surgeryForm.intervention_id}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, intervention_id: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              >
-                {(catalogs?.interventions ?? []).map((intervention) => {
-                  const specialty = catalogs?.specialties.find((item) => item.id === intervention.especialidadId)
-                  return (
-                    <option key={intervention.id} value={intervention.id}>
-                      {intervention.nombre}{specialty ? ` · ${specialty.nombre}` : ''}
-                    </option>
-                  )
-                })}
-              </select>
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Anestesia
-              <select
-                value={surgeryForm.tipo_anestesia_id}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, tipo_anestesia_id: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              >
-                <option value="">Sin definir</option>
-                {(catalogs?.anesthesia_types ?? []).map((anesthesia) => (
-                  <option key={anesthesia.id} value={anesthesia.id}>{anesthesia.nombre}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Cirujano
-              <select
-                value={surgeryForm.cirujano_forzado_id}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, cirujano_forzado_id: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              >
-                <option value="">Sin asignar</option>
-                {(catalogs?.surgeons ?? []).map((surgeon) => (
-                  <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Duración estimada
-              <input
-                type="number"
-                min="1"
-                value={surgeryForm.duracion_estimada_minutos}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, duracion_estimada_minutos: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700">
-              Prioridad clínica
-              <input
-                type="number"
-                min="0.01"
-                step="0.1"
-                value={surgeryForm.prioridad_clinica}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, prioridad_clinica: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            <div className="flex items-center gap-4 md:col-span-2">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={surgeryForm.byer}
-                  onChange={(event) => setSurgeryForm((form) => ({ ...form, byer: event.target.checked }))}
-                />
-                Byer
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={surgeryForm.sedacion}
-                  onChange={(event) => setSurgeryForm((form) => ({ ...form, sedacion: event.target.checked }))}
-                />
-                Sedación
-              </label>
-            </div>
-            <label className="text-sm font-medium text-slate-700 md:col-span-2">
-              Observaciones
-              <textarea
-                value={surgeryForm.observaciones}
-                onChange={(event) => setSurgeryForm((form) => ({ ...form, observaciones: event.target.value }))}
-                rows={3}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"
-              />
-            </label>
-            {editingSurgery && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 md:col-span-2">
-                Programación actual: {formatDateTime(editingSurgery.inicio)} · {editingSurgery.sala ?? 'Sin sala'}.
+          <div className="space-y-4">
+            <FormSection title="Paciente" description="Datos de identificación y cobertura." icon={<UserRound size={18} />}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label htmlFor="surgery-dni" className="text-sm font-medium text-slate-700">
+                  DNI <span className="text-red-600">*</span>
+                  <input id="surgery-dni" inputMode="numeric" value={surgeryForm.dni} aria-invalid={Boolean(formErrors.dni)} aria-describedby="surgery-dni-error" onChange={(event) => setSurgeryForm((form) => ({ ...form, dni: event.target.value.replace(/\D/g, '') }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" />
+                  {formErrors.dni && <span id="surgery-dni-error" className="mt-1 block text-xs text-red-600">{formErrors.dni}</span>}
+                </label>
+                <label htmlFor="surgery-patient" className="text-sm font-medium text-slate-700">
+                  Nombre completo <span className="text-red-600">*</span>
+                  <input id="surgery-patient" value={surgeryForm.paciente} aria-invalid={Boolean(formErrors.paciente)} aria-describedby="surgery-patient-error" onChange={(event) => setSurgeryForm((form) => ({ ...form, paciente: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" />
+                  {formErrors.paciente && <span id="surgery-patient-error" className="mt-1 block text-xs text-red-600">{formErrors.paciente}</span>}
+                </label>
+                <label htmlFor="surgery-age" className="text-sm font-medium text-slate-700">Edad<input id="surgery-age" type="number" min="0" value={surgeryForm.edad} onChange={(event) => setSurgeryForm((form) => ({ ...form, edad: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" /></label>
+                <label htmlFor="surgery-insurance" className="text-sm font-medium text-slate-700">Obra social<input id="surgery-insurance" value={surgeryForm.obra_social} onChange={(event) => setSurgeryForm((form) => ({ ...form, obra_social: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" /></label>
               </div>
-            )}
+            </FormSection>
+
+            <FormSection title="Procedimiento clínico" description="Información utilizada para priorizar y estimar la cirugía." icon={<Activity size={18} />}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label htmlFor="surgery-intervention" className="text-sm font-medium text-slate-700 md:col-span-2">Intervención <span className="text-red-600">*</span>
+                  <select id="surgery-intervention" value={surgeryForm.intervention_id} aria-invalid={Boolean(formErrors.intervention_id)} onChange={(event) => setSurgeryForm((form) => ({ ...form, intervention_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500">
+                    <option value="">Seleccioná una intervención</option>
+                    {(catalogs?.interventions ?? []).map((intervention) => {
+                      const specialty = catalogs?.specialties.find((item) => item.id === intervention.especialidadId)
+                      return <option key={intervention.id} value={intervention.id}>{intervention.nombre}{specialty ? ` · ${specialty.nombre}` : ''}</option>
+                    })}
+                  </select>
+                  {formErrors.intervention_id && <span className="mt-1 block text-xs text-red-600">{formErrors.intervention_id}</span>}
+                </label>
+                <label htmlFor="surgery-duration" className="text-sm font-medium text-slate-700">Duración estimada (min) <span className="text-red-600">*</span><input id="surgery-duration" type="number" min="1" value={surgeryForm.duracion_estimada_minutos} aria-invalid={Boolean(formErrors.duracion_estimada_minutos)} onChange={(event) => setSurgeryForm((form) => ({ ...form, duracion_estimada_minutos: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" />{formErrors.duracion_estimada_minutos && <span className="mt-1 block text-xs text-red-600">{formErrors.duracion_estimada_minutos}</span>}</label>
+                <label htmlFor="surgery-priority" className="text-sm font-medium text-slate-700">Prioridad clínica <span className="text-red-600">*</span><input id="surgery-priority" type="number" min="0.01" step="0.1" value={surgeryForm.prioridad_clinica} aria-invalid={Boolean(formErrors.prioridad_clinica)} onChange={(event) => setSurgeryForm((form) => ({ ...form, prioridad_clinica: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" />{formErrors.prioridad_clinica && <span className="mt-1 block text-xs text-red-600">{formErrors.prioridad_clinica}</span>}</label>
+              </div>
+            </FormSection>
+
+            <FormSection title="Requisitos" description="Asignaciones opcionales y consideraciones para el equipo." icon={<Stethoscope size={18} />}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label htmlFor="surgery-anesthesia" className="text-sm font-medium text-slate-700">Anestesia<select id="surgery-anesthesia" value={surgeryForm.tipo_anestesia_id} onChange={(event) => setSurgeryForm((form) => ({ ...form, tipo_anestesia_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"><option value="">Sin definir</option>{(catalogs?.anesthesia_types ?? []).map((anesthesia) => <option key={anesthesia.id} value={anesthesia.id}>{anesthesia.nombre}</option>)}</select></label>
+                <label htmlFor="surgery-surgeon" className="text-sm font-medium text-slate-700">Cirujano requerido<select id="surgery-surgeon" value={surgeryForm.cirujano_forzado_id} onChange={(event) => setSurgeryForm((form) => ({ ...form, cirujano_forzado_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"><option value="">Sin asignar</option>{(catalogs?.surgeons ?? []).map((surgeon) => <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Dejalo vacío para que la planificación asigne un profesional compatible.</span></label>
+                <div className="flex items-center gap-5 md:col-span-2"><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={surgeryForm.byer} onChange={(event) => setSurgeryForm((form) => ({ ...form, byer: event.target.checked }))} />Byer</label><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={surgeryForm.sedacion} onChange={(event) => setSurgeryForm((form) => ({ ...form, sedacion: event.target.checked }))} />Sedación</label></div>
+                <label htmlFor="surgery-notes" className="text-sm font-medium text-slate-700 md:col-span-2">Observaciones<textarea id="surgery-notes" value={surgeryForm.observaciones} onChange={(event) => setSurgeryForm((form) => ({ ...form, observaciones: event.target.value }))} rows={3} placeholder="Alergias, consideraciones clínicas u otra información relevante..." className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" /></label>
+              </div>
+            </FormSection>
+            {editingSurgery && <FeedbackMessage>Programación actual: {formatDateTime(editingSurgery.inicio)} · {editingSurgery.sala ?? 'Sin sala'}. La agenda sólo cambia al aprobar una planificación.</FeedbackMessage>}
           </div>
           {surgeryError && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1417,7 +1387,7 @@ export default function MvpCirugiasPage() {
             <button
               type="button"
               onClick={saveSurgery}
-              disabled={isSavingSurgery}
+              disabled={isSavingSurgery || !isSurgeryFormValid}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
               {isSavingSurgery ? 'Guardando...' : 'Guardar cirugía'}
@@ -1431,44 +1401,18 @@ export default function MvpCirugiasPage() {
           {selectedSurgery && (
             <>
               <DialogHeader>
-                <DialogTitle>{selectedSurgery.paciente}</DialogTitle>
-                <DialogDescription>DNI {selectedSurgery.dni} · {selectedSurgery.estado}</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-3 md:grid-cols-2">
-                {[
-                  ['Inicio', formatDateTime(selectedSurgery.inicio)],
-                  ['Fin', formatDateTime(selectedSurgery.fin)],
-                  ['Especialidad', selectedSurgery.especialidad],
-                  ['Intervenciones', selectedSurgery.intervenciones.join(', ') || 'Sin intervenciones'],
-                  ['Sala', selectedSurgery.sala ?? 'Sin sala'],
-                  ['Anestesia', selectedSurgery.anestesia ?? 'Sin definir'],
-                  ['Cirujano', selectedSurgery.cirujanoForzado?.nombre ?? 'Sin asignar'],
-                  ['Duración estimada', `${selectedSurgery.duracion_estimada_minutos} min`],
-                  ['Prioridad clínica', selectedSurgery.prioridad_clinica.toString()],
-                  ['Obra social', selectedSurgery.obra_social ?? 'Sin definir'],
-                  ['Creada', formatDateTime(selectedSurgery.created_at)],
-                  ['Actualizada', formatDateTime(selectedSurgery.updated_at)],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
-                    <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-medium uppercase text-slate-500">Insumos</p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {selectedSurgery.insumos.length > 0
-                    ? selectedSurgery.insumos.map((item) => `${item.nombre} x${item.cantidad}`).join(', ')
-                    : 'Sin insumos cargados'}
-                </p>
-              </div>
-              {selectedSurgery.observaciones && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-medium uppercase text-slate-500">Observaciones</p>
-                  <p className="mt-1 text-sm text-slate-700">{selectedSurgery.observaciones}</p>
+                <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
+                  <div><DialogTitle>{selectedSurgery.paciente}</DialogTitle><DialogDescription>DNI {selectedSurgery.dni}</DialogDescription></div>
+                  <SurgeryStatusBadge status={selectedSurgery.estado} />
                 </div>
-              )}
+              </DialogHeader>
+              <div className="space-y-4">
+                <FormSection title="Paciente" icon={<UserRound size={18} />}><div className="grid gap-3 md:grid-cols-3"><DetailItem label="Nombre" value={selectedSurgery.paciente} /><DetailItem label="DNI" value={selectedSurgery.dni} /><DetailItem label="Obra social" value={selectedSurgery.obra_social ?? 'Sin definir'} /></div></FormSection>
+                <FormSection title="Solicitud quirúrgica" icon={<Activity size={18} />}><div className="grid gap-3 md:grid-cols-2"><DetailItem label="Intervención" value={selectedSurgery.intervenciones.join(', ') || 'Sin intervención'} /><DetailItem label="Especialidad" value={selectedSurgery.especialidad} /><DetailItem label="Duración estimada" value={`${selectedSurgery.duracion_estimada_minutos} min`} /><DetailItem label="Prioridad clínica" value={selectedSurgery.prioridad_clinica.toString()} /></div></FormSection>
+                <FormSection title="Programación y equipo" icon={<Stethoscope size={18} />}><div className="grid gap-3 md:grid-cols-2"><DetailItem label="Inicio" value={formatDateTime(selectedSurgery.inicio)} /><DetailItem label="Fin" value={formatDateTime(selectedSurgery.fin)} /><DetailItem label="Quirófano" value={selectedSurgery.sala ?? 'Sin asignar'} /><DetailItem label="Cirujano" value={selectedSurgery.cirujanoForzado?.nombre ?? 'Sin asignar'} /><DetailItem label="Anestesia" value={selectedSurgery.anestesia ?? 'Sin definir'} /><DetailItem label="Opciones" value={[selectedSurgery.byer ? 'Byer' : null, selectedSurgery.sedacion ? 'Sedación' : null].filter(Boolean).join(' · ') || 'Sin opciones adicionales'} /></div></FormSection>
+                <FormSection title="Recursos y observaciones"><DetailItem label="Insumos" value={selectedSurgery.insumos.length > 0 ? selectedSurgery.insumos.map((item) => `${item.nombre} x${item.cantidad}`).join(', ') : 'Sin insumos cargados'} />{selectedSurgery.observaciones && <div className="mt-3"><DetailItem label="Observaciones" value={selectedSurgery.observaciones} /></div>}</FormSection>
+                <FormSection title="Auditoría"><div className="grid gap-3 md:grid-cols-2"><DetailItem label="Creada" value={formatDateTime(selectedSurgery.created_at)} /><DetailItem label="Última actualización" value={formatDateTime(selectedSurgery.updated_at)} /></div></FormSection>
+              </div>
             </>
           )}
         </DialogContent>
@@ -1506,6 +1450,39 @@ export default function MvpCirugiasPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmActionDialog
+        open={isApproveConfirmOpen}
+        onOpenChange={setIsApproveConfirmOpen}
+        title="Aprobar planificación semanal"
+        description="Las cirugías asignadas pasarán a Programada con el horario, quirófano y cirujano de esta propuesta."
+        confirmLabel="Aprobar planificación"
+        busyLabel="Aprobando..."
+        busy={isApprovingPlanning}
+        tone="primary"
+        onConfirm={approvePlanning}
+        detail={planning && <FeedbackMessage tone="warning">{planningOutput?.resumen?.pacientes_programados ?? scheduledPlanningItems.length} cirugías serán programadas. Revisá la propuesta completa antes de confirmar.</FeedbackMessage>}
+      />
+      <ConfirmActionDialog
+        open={isRejectConfirmOpen}
+        onOpenChange={setIsRejectConfirmOpen}
+        title="Rechazar planificación"
+        description="La propuesta quedará rechazada y ninguna cirugía cambiará de estado. El administrador podrá corregir las solicitudes y generar otra."
+        confirmLabel="Confirmar rechazo"
+        busyLabel="Rechazando..."
+        busy={isRejectingPlanning}
+        onConfirm={rejectPlanning}
+        detail={<FeedbackMessage tone="warning" title="Motivo registrado">{rejectionReason}</FeedbackMessage>}
+      />
+      <ConfirmActionDialog
+        open={isDeleteConfirmOpen}
+        onOpenChange={setIsDeleteConfirmOpen}
+        title="Eliminar planificación"
+        description="Se eliminará esta ejecución y su propuesta. Las cirugías conservarán su estado actual."
+        confirmLabel="Eliminar planificación"
+        busyLabel="Eliminando..."
+        busy={isDeletingPlanning}
+        onConfirm={deletePlanning}
+      />
       {shouldShowPendingApprovalSnack && (
         <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg border border-amber-200 bg-white p-4 shadow-xl">
           <div className="flex items-start gap-3">

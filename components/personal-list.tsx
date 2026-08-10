@@ -3,15 +3,18 @@
 import { useState } from 'react'
 import { Plus, Search, Edit2, Trash2, X } from 'lucide-react'
 import { mockPersonal, Personal } from '@/lib/mock-data'
+import { toast } from '@/hooks/use-toast'
+import ConfirmActionDialog from './confirm-action-dialog'
 
 const roles = ['Cirujano', 'Anestesista', 'Instrumentador', 'Ayudante', 'Enfermero'] as const
 export default function PersonalList() {
-  const personal = mockPersonal
+  const [personal, setPersonal] = useState<Personal[]>(() => [...mockPersonal])
   const [search, setSearch] = useState('')
   const [filterRol, setFilterRol] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [passwordInicial, setPasswordInicial] = useState('')
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Pick<Personal, 'nombre' | 'dni' | 'email' | 'rol' | 'estado'>>({
     nombre: '',
     dni: '',
@@ -50,22 +53,41 @@ export default function PersonalList() {
     setPasswordInicial('')
   }
 
-  const handleSave = () => setShowModal(false)
+  const handleSave = () => {
+    if (!formData.nombre.trim() || !formData.dni.trim() || !formData.email.trim() || (!editingId && passwordInicial.length < 6)) return
+    setPersonal((current) => editingId
+      ? current.map((item) => item.id === editingId ? { ...item, ...formData } : item)
+      : [...current, { id: `personal-${Date.now()}`, ...formData, especialidad: formData.rol, passwordInicial }])
+    setShowModal(false)
+    toast({ title: editingId ? 'Personal actualizado' : 'Personal creado', description: 'El cambio se conserva durante esta sesión simulada.' })
+  }
+
+  const toggleStatus = (id: string) => {
+    setPersonal((current) => current.map((item) => item.id === id ? { ...item, estado: !item.estado } : item))
+    toast({ title: 'Estado actualizado', description: 'La disponibilidad del personal cambió en el mock.' })
+  }
+
+  const remove = () => {
+    if (!deleteId) return
+    setPersonal((current) => current.filter((item) => item.id !== deleteId))
+    setDeleteId(null)
+    toast({ title: 'Personal dado de baja', description: 'Se quitó de la lista durante esta sesión.' })
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Personal Medico</h1>
-          <p className="text-sm text-muted-foreground mt-1">Gestion del equipo medico y personal</p>
+          <h1 className="text-3xl font-bold text-foreground">Personal médico</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gestión del equipo médico y personal</p>
         </div>
         <button
           onClick={() => handleOpenModal()}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus size={18} />
-          Nuevo Personal
+          Nuevo personal
         </button>
       </div>
 
@@ -125,6 +147,7 @@ export default function PersonalList() {
                 <td className="px-4 py-3 text-center">
                   <button
                     type="button"
+                    onClick={() => toggleStatus(p.id)}
                     aria-label={`Estado de ${p.nombre}`}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       p.estado ? 'bg-green-500' : 'bg-gray-300'
@@ -149,6 +172,8 @@ export default function PersonalList() {
                     <button
                       type="button"
                       aria-label={`Eliminar ${p.nombre}`}
+                      title="Dar de baja"
+                      onClick={() => setDeleteId(p.id)}
                       className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                     >
                       <Trash2 size={16} />
@@ -168,12 +193,12 @@ export default function PersonalList() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full mx-4">
+          <div role="dialog" aria-modal="true" className="bg-card rounded-xl shadow-2xl max-w-md w-full mx-4">
             <div className="p-6 border-b border-border flex items-center justify-between">
               <h2 className="text-xl font-bold text-foreground">
-                {editingId ? 'Editar Personal' : 'Nuevo Personal'}
+                {editingId ? 'Editar personal' : 'Nuevo personal'}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-muted rounded-lg">
+              <button aria-label="Cerrar" onClick={() => setShowModal(false)} className="p-2 hover:bg-muted rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -198,7 +223,7 @@ export default function PersonalList() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Correo electronico *</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Correo electrónico *</label>
                 <input
                   type="email"
                   value={formData.email}
@@ -248,7 +273,8 @@ export default function PersonalList() {
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  disabled={!formData.nombre.trim() || !formData.dni.trim() || !formData.email.trim() || (!editingId && passwordInicial.length < 6)}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {editingId ? 'Guardar Cambios' : 'Crear Personal'}
                 </button>
@@ -257,6 +283,7 @@ export default function PersonalList() {
           </div>
         </div>
       )}
+      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Dar de baja al personal" description="Se quitará de la lista simulada durante esta sesión." confirmLabel="Dar de baja" onConfirm={remove} />
     </div>
   )
 }

@@ -1,270 +1,153 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Zap } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { CalendarDays, Check, LoaderCircle, Sparkles, X, XCircle } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
+import ConfirmActionDialog from './confirm-action-dialog'
+import StatusBadge from './status-badge'
 
 interface WeeklySurgery {
   id: string
   dia: string
-  fecha: string
   hora: string
   paciente: string
   especialidad: string
   cirujano: string
   sala: string
-  estado: 'Programada' | 'Confirmada' | 'Tentativa'
 }
 
-const mockWeeklySurgeries: WeeklySurgery[] = [
-  {
-    id: '1',
-    dia: 'Lunes',
-    fecha: '2025-11-17',
-    hora: '08:00',
-    paciente: 'Juan Martínez',
-    especialidad: 'Ortopedia',
-    cirujano: 'Dr. López',
-    sala: 'Quirófano A',
-    estado: 'Confirmada',
-  },
-  {
-    id: '2',
-    dia: 'Lunes',
-    fecha: '2025-11-17',
-    hora: '10:30',
-    paciente: 'Laura Sánchez',
-    especialidad: 'Oftalmología',
-    cirujano: 'Dra. Fernández',
-    sala: 'Quirófano C',
-    estado: 'Confirmada',
-  },
-  {
-    id: '3',
-    dia: 'Martes',
-    fecha: '2025-11-18',
-    hora: '09:00',
-    paciente: 'Roberto Díaz',
-    especialidad: 'Cirugía General',
-    cirujano: 'Dr. Rodríguez',
-    sala: 'Quirófano B',
-    estado: 'Programada',
-  },
-  {
-    id: '4',
-    dia: 'Miércoles',
-    fecha: '2025-11-19',
-    hora: '14:00',
-    paciente: 'Ana García',
-    especialidad: 'Urología',
-    cirujano: 'Dr. Martínez',
-    sala: 'Quirófano A',
-    estado: 'Tentativa',
-  },
-  {
-    id: '5',
-    dia: 'Viernes',
-    fecha: '2025-11-21',
-    hora: '11:00',
-    paciente: 'Carlos Ruiz',
-    especialidad: 'Traumatología',
-    cirujano: 'Dr. López',
-    sala: 'Quirófano D',
-    estado: 'Confirmada',
-  },
+const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
+
+const generatedSurgeries: WeeklySurgery[] = [
+  { id: 'p1', dia: 'Lunes', hora: '08:00', paciente: 'Patricia Vega', especialidad: 'Cirugía General', cirujano: 'Dr. Rodríguez', sala: 'Quirófano B' },
+  { id: 'p2', dia: 'Martes', hora: '09:30', paciente: 'Alejandro Ríos', especialidad: 'Cirugía General', cirujano: 'Dr. Rodríguez', sala: 'Quirófano A' },
+  { id: 'p3', dia: 'Miércoles', hora: '11:00', paciente: 'Natalia Castro', especialidad: 'Ginecología', cirujano: 'Dra. Rojas', sala: 'Quirófano C' },
 ]
-
-const getDaysOfWeek = () => {
-  return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
-}
-
-const getStatusColor = (estado: string) => {
-  switch (estado) {
-    case 'Confirmada':
-      return 'bg-green-100 text-green-800 border-green-300'
-    case 'Programada':
-      return 'bg-blue-100 text-blue-800 border-blue-300'
-    case 'Tentativa':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-    default:
-      return 'bg-gray-100 text-gray-800 border-gray-300'
-  }
-}
 
 interface WeeklyPlanningModalProps {
   onClose: () => void
   viewOnly?: boolean
+  onApproved?: () => void
+  onRejected?: (reason: string) => void
 }
 
-export default function WeeklyPlanningModal({ onClose, viewOnly = false }: WeeklyPlanningModalProps) {
-  const [surgeries, setSurgeries] = useState<WeeklySurgery[]>(viewOnly ? mockWeeklySurgeries : [])
-  const [planningGenerated, setPlanningGenerated] = useState(viewOnly)
-  const [selectedDayForPlanning, setSelectedDayForPlanning] = useState<string | null>(null)
-  const [isAutoPlanning, setIsAutoPlanning] = useState(false)
-  const [formData, setFormData] = useState({
-    hora: '',
-    paciente: '',
-    especialidad: '',
-    cirujano: '',
-    sala: '',
-  })
+export default function WeeklyPlanningModal({ onClose, viewOnly = false, onApproved, onRejected }: WeeklyPlanningModalProps) {
+  const [phase, setPhase] = useState<'preflight' | 'processing' | 'review'>(viewOnly ? 'review' : 'preflight')
+  const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null)
+  const [confirmApprove, setConfirmApprove] = useState(false)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const groupedByDay = useMemo(() => Object.fromEntries(
+    daysOfWeek.map((day) => [day, phase === 'review' ? generatedSurgeries.filter((surgery) => surgery.dia === day) : []])
+  ) as Record<string, WeeklySurgery[]>, [phase])
 
-  const daysOfWeek = getDaysOfWeek()
-
-  const groupedByDay = daysOfWeek.reduce(
-    (acc, day) => {
-      acc[day] = surgeries.filter((s) => s.dia === day)
-      return acc
-    },
-    {} as Record<string, WeeklySurgery[]>
-  )
-
-  const handleGeneratePlanning = () => {
-    setIsAutoPlanning(true)
-    
-    // Simulate automatic distribution of surgeries
-    const pendingSurgeries = [
-      { paciente: 'María López', especialidad: 'Cirugía General', cirujano: 'Dr. García', sala: 'Quirófano B' },
-      { paciente: 'Pedro Gómez', especialidad: 'Ortopedia', cirujano: 'Dr. López', sala: 'Quirófano A' },
-      { paciente: 'Sofia Martín', especialidad: 'Oftalmología', cirujano: 'Dra. Fernández', sala: 'Quirófano C' },
-      { paciente: 'Diego Torres', especialidad: 'Urología', cirujano: 'Dr. Martínez', sala: 'Quirófano D' },
-      { paciente: 'Elena Rodríguez', especialidad: 'Traumatología', cirujano: 'Dr. López', sala: 'Quirófano A' },
-    ]
-
-    const horasDisponibles = ['08:00', '09:30', '11:00', '13:00', '14:30', '16:00']
-    const newSurgeries: WeeklySurgery[] = []
-
-    pendingSurgeries.forEach((surgery, index) => {
-      const dayIndex = index % 5
-      const horaIndex = Math.floor(index / 5)
-      const day = daysOfWeek[dayIndex]
-      
-      newSurgeries.push({
-        id: `auto-${index}`,
-        dia: day,
-        fecha: `2025-11-${17 + dayIndex}`,
-        hora: horasDisponibles[horaIndex] || '08:00',
-        paciente: surgery.paciente,
-        especialidad: surgery.especialidad,
-        cirujano: surgery.cirujano,
-        sala: surgery.sala,
-        estado: 'Programada',
-      })
-    })
-
-    setSurgeries(newSurgeries)
-    setPlanningGenerated(true)
-    
-    setTimeout(() => {
-      setIsAutoPlanning(false)
-    }, 500)
+  const generate = () => {
+    setPhase('processing')
+    window.setTimeout(() => {
+      setPhase('review')
+      toast({ title: 'Planificación simulada generada', description: 'La propuesta está lista para revisar.' })
+    }, 900)
   }
 
-  const handleAddSurgery = () => {
-    if (selectedDayForPlanning && !viewOnly) {
-      console.log('Adding surgery for', selectedDayForPlanning, formData)
-      setFormData({ hora: '', paciente: '', especialidad: '', cirujano: '', sala: '' })
-      setSelectedDayForPlanning(null)
-    }
+  const approve = () => {
+    setDecision('approved')
+    setConfirmApprove(false)
+    onApproved?.()
+    toast({ title: 'Planificación aprobada', description: 'Las cirugías simuladas pasaron a Programada durante esta sesión.' })
+  }
+
+  const reject = () => {
+    const normalizedReason = reason.trim()
+    if (!normalizedReason) return
+    setDecision('rejected')
+    setRejectOpen(false)
+    onRejected?.(normalizedReason)
+    toast({ title: 'Planificación rechazada', description: 'Puede corregir las solicitudes y generar una nueva propuesta.' })
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-labelledby="planning-title" className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-card shadow-2xl">
+        <header className="flex items-start justify-between border-b p-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {viewOnly ? 'Cirugías de Esta Semana' : 'Planificación Semanal'}
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">17-21 de Noviembre, 2025 (Lunes a Viernes)</p>
+            <div className="mb-2 flex items-center gap-2">
+              <StatusBadge kind="planning" status={decision === 'approved' ? 'approved' : decision === 'rejected' ? 'rejected' : phase === 'processing' ? 'planning' : phase === 'review' ? 'pending_approval' : 'simulation'} />
+              <span className="text-xs font-medium text-muted-foreground">Planificación mock</span>
+            </div>
+            <h2 id="planning-title" className="text-2xl font-bold">Planificación semanal</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Semana del 17/11 al 21/11 · los resultados se restablecen al recargar.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <X size={24} />
-          </button>
-        </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar planificación" className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><X /></button>
+        </header>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-6">
-          {!planningGenerated ? (
-            <div className="flex items-center justify-center h-96">
-              <div className="text-center">
-                <div className="text-6xl mb-4">📋</div>
-                <h3 className="text-xl font-semibold text-gray-800 mb-2">Planificación Vacía</h3>
-                <p className="text-gray-600 mb-6">Presiona el botón "Generar Planificación Semanal" para comenzar</p>
+        <div className="flex-1 overflow-y-auto p-6" aria-live="polite">
+          {phase === 'preflight' && (
+            <div className="mx-auto max-w-3xl space-y-6">
+              <div className="rounded-xl border bg-blue-50 p-5">
+                <div className="flex items-start gap-3"><CalendarDays className="mt-0.5 text-blue-600" /><div><h3 className="font-semibold text-blue-950">Datos listos para la simulación</h3><p className="mt-1 text-sm text-blue-800">Se distribuirán solicitudes pendientes en los recursos mock disponibles.</p></div></div>
               </div>
+              <div className="grid grid-cols-3 gap-4">
+                <SummaryCard label="Solicitudes" value="4" detail="3 válidas" />
+                <SummaryCard label="Quirófanos" value="4" detail="disponibles" />
+                <SummaryCard label="Cirujanos" value="8" detail="activos" />
+              </div>
+              <div className="rounded-xl border p-5"><h3 className="font-semibold">Bloqueos detectados</h3><p className="mt-2 text-sm text-muted-foreground">1 solicitud no se asignará porque su cirujano figura inactivo en los datos simulados.</p></div>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              {daysOfWeek.map((day) => (
-                <div
-                  key={day}
-                  className="border border-gray-200 rounded-lg p-4 bg-gray-50 min-h-96"
-                >
-                  <h3 className="font-bold text-gray-900 mb-4 pb-2 border-b-2 border-blue-500">
-                    {day}
-                  </h3>
-                  <div className="space-y-2 mb-4">
-                    {groupedByDay[day].map((surgery) => (
-                      <div
-                        key={surgery.id}
-                        className={`p-3 rounded-lg border-l-4 text-sm ${getStatusColor(surgery.estado)}`}
-                      >
-                        <div className="font-semibold">{surgery.hora}</div>
-                        <div className="text-xs mt-1">{surgery.paciente}</div>
-                        <div className="text-xs opacity-75 mt-1">{surgery.especialidad}</div>
-                        <div className="text-xs opacity-75">{surgery.sala}</div>
-                      </div>
-                    ))}
-                  </div>
+          )}
 
-                  {!viewOnly && (
-                    <button
-                      onClick={() => setSelectedDayForPlanning(day)}
-                      className="w-full py-2 text-sm border-2 border-dashed border-gray-300 text-gray-600 rounded hover:border-blue-500 hover:text-blue-600 transition-colors"
-                    >
-                      + Agregar
-                    </button>
-                  )}
-                </div>
-              ))}
+          {phase === 'processing' && (
+            <div className="grid min-h-96 place-items-center text-center">
+              <div><LoaderCircle className="mx-auto mb-4 animate-spin text-blue-600" size={44} /><h3 className="text-xl font-semibold">Generando propuesta simulada</h3><p className="mt-2 max-w-md text-sm text-muted-foreground">Se están evaluando disponibilidad, horarios y recursos. Esta vista se actualizará automáticamente.</p></div>
+            </div>
+          )}
+
+          {phase === 'review' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-4 gap-4">
+                <SummaryCard label="Asignadas" value="3" detail="de 4" />
+                <SummaryCard label="No asignadas" value="1" detail="solicitud" />
+                <SummaryCard label="Utilización" value="68%" detail="promedio simulado" />
+                <SummaryCard label="Duración" value="4 h 30 min" detail="planificada" />
+              </div>
+              <div className="grid grid-cols-5 gap-3">
+                {daysOfWeek.map((day) => (
+                  <section key={day} className="min-h-72 rounded-xl border bg-muted/30 p-3">
+                    <h3 className="border-b pb-2 font-semibold">{day}</h3>
+                    <div className="mt-3 space-y-3">
+                      {groupedByDay[day].length === 0 ? <p className="py-8 text-center text-xs text-muted-foreground">Sin cirugías asignadas</p> : groupedByDay[day].map((surgery) => (
+                        <article key={surgery.id} className="rounded-lg border-l-4 border-l-blue-500 bg-card p-3 text-xs shadow-sm">
+                          <p className="font-semibold text-blue-700">{surgery.hora} · {surgery.sala}</p>
+                          <p className="mt-2 font-medium">{surgery.paciente}</p>
+                          <p className="mt-1 text-muted-foreground">{surgery.especialidad}</p>
+                          <p className="text-muted-foreground">{surgery.cirujano}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+              <details className="rounded-xl border p-4"><summary className="cursor-pointer font-semibold">Cirugías no asignadas (1)</summary><p className="mt-3 text-sm text-muted-foreground">Fernando Luna · Prostatectomía. El conjunto mock indica que no fue posible asignarla en esta propuesta.</p></details>
+              {decision && <div className={`rounded-xl border p-4 text-sm ${decision === 'approved' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>La propuesta fue {decision === 'approved' ? 'aprobada' : 'rechazada'} en esta sesión simulada.</div>}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-between items-center gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition-colors"
-          >
-            Cerrar
-          </button>
-          {!viewOnly && (
-            <div className="flex gap-2">
-              <button
-                onClick={handleGeneratePlanning}
-                disabled={isAutoPlanning}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-              >
-                <Zap size={18} />
-                {isAutoPlanning ? 'Generando...' : 'Generar Planificación Semanal'}
-              </button>
-              {planningGenerated && (
-                <button
-                  onClick={handleAddSurgery}
-                  disabled={!selectedDayForPlanning}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors"
-                >
-                  Guardar Cambios
-                </button>
-              )}
-            </div>
-          )}
+        <footer className="flex items-center justify-between gap-3 border-t bg-card p-5">
+          <button type="button" onClick={onClose} className="rounded-lg bg-muted px-4 py-2 font-medium">Cerrar</button>
+          {phase === 'preflight' && <button type="button" onClick={generate} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"><Sparkles size={18} />Generar propuesta</button>}
+          {phase === 'review' && !viewOnly && !decision && <div className="flex gap-2"><button type="button" onClick={() => setRejectOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 font-medium text-red-700"><XCircle size={18} />Rechazar con motivo</button><button type="button" onClick={() => setConfirmApprove(true)} className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 font-medium text-white"><Check size={18} />Aprobar planificación</button></div>}
+        </footer>
         </div>
       </div>
-    </div>
+
+      <ConfirmActionDialog open={confirmApprove} onOpenChange={setConfirmApprove} title="Aprobar planificación simulada" description="Las solicitudes asignadas pasarán a estado Programada durante esta sesión. El cambio se perderá al recargar." confirmLabel="Aprobar planificación" onConfirm={approve} />
+
+      {rejectOpen && <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4"><div role="dialog" aria-modal="true" aria-labelledby="reject-title" className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl"><h3 id="reject-title" className="text-lg font-semibold">Rechazar propuesta</h3><p className="mt-2 text-sm text-muted-foreground">Indique un motivo para que el administrador pueda corregir las solicitudes.</p><label htmlFor="reject-reason" className="mt-4 block text-sm font-medium">Motivo *</label><textarea id="reject-reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={4} className="mt-2 w-full rounded-lg border bg-background p-3" aria-invalid={!reason.trim()} /><div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setRejectOpen(false)} className="rounded-lg bg-muted px-4 py-2">Cancelar</button><button type="button" disabled={!reason.trim()} onClick={reject} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50">Confirmar rechazo</button></div></div></div>}
+    </>
   )
+}
+
+function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <div className="rounded-xl border bg-card p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{detail}</p></div>
 }

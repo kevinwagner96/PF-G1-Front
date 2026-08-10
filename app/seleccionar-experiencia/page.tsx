@@ -41,7 +41,7 @@ export default function SeleccionarExperienciaPage() {
               <Stethoscope size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-950">SurgiCare</h1>
+            <h1 className="text-xl font-bold text-slate-950">SurgiCare</h1>
               <p className="text-sm text-slate-500">Bienvenido/a, {user?.nombre}</p>
             </div>
           </div>
@@ -51,7 +51,7 @@ export default function SeleccionarExperienciaPage() {
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
           >
             <LogOut size={16} />
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       </header>
@@ -73,8 +73,8 @@ export default function SeleccionarExperienciaPage() {
             </div>
             <h3 className="text-3xl font-bold text-slate-950">Mockup</h3>
             <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
-              Ingresa al sistema completo como está hoy, usando los datos mock para recorrer pantallas,
-              navegación y flujos visuales.
+              Recorré el sistema completo con datos simulados. Los cambios duran durante la sesión y se
+              restablecen al recargar.
             </p>
           </button>
 
@@ -89,8 +89,7 @@ export default function SeleccionarExperienciaPage() {
             <h3 className="text-3xl font-bold text-slate-950">MVP</h3>
             <p className="mt-2 text-lg font-semibold text-emerald-700">Programacion de Agenda con IA</p>
             <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
-              Ingresa a la primera versión conectada a la base real. Por ahora solo está habilitada
-              la lista de cirugías.
+              Trabajá con cirugías reales, generá y revisá planificaciones y consultá indicadores de gestión.
             </p>
             <div className="mt-8 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
               <CalendarClock size={16} />
@@ -102,4 +101,3 @@ export default function SeleccionarExperienciaPage() {
     </div>
   )
 }
-

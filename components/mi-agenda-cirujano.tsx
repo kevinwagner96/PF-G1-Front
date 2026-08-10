@@ -1,320 +1,75 @@
 'use client'
 
-import { useState } from 'react'
-import { Calendar, Clock, Check, X, AlertTriangle, Edit3, ChevronRight, FileText } from 'lucide-react'
-import { useAuth } from '@/lib/auth-context'
-import { mockCirugias, Cirugia } from '@/lib/mock-data'
+import { useMemo, useState } from 'react'
+import { Calendar, Check, Clock, Edit3, FileText, X } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
+import { Cirugia, mockCirugias } from '@/lib/mock-data'
+import ConfirmActionDialog from './confirm-action-dialog'
+import EmptyState from './empty-state'
+import PageHeader from './page-header'
+import SurgeryStatusBadge from './surgery-status-badge'
+import ViewCirugia from './view-cirugia-modal'
 
-interface SolicitudModificacion {
-  turnosAfectados: string[]
-  accion: 'reprogramar' | 'cancelar' | 'cambiar_equipo'
-  nuevoHorario?: string
-  nuevaFecha?: string
-  justificacion: string
-}
+type Tab = 'pendientes' | 'programadas' | 'historial'
+type Request = { surgeryIds: string[]; action: 'reprogramar' | 'cancelar' | 'cambiar_equipo'; date: string; time: string; reason: string }
 
-const getStatusColor = (estado: string) => {
-  switch (estado) {
-    case 'Pendiente':
-      return 'bg-amber-50 border-amber-200 text-amber-800'
-    case 'Programada':
-      return 'bg-blue-50 border-blue-200 text-blue-800'
-    case 'En Curso':
-      return 'bg-yellow-50 border-yellow-300 text-yellow-800'
-    case 'Completada':
-      return 'bg-green-50 border-green-200 text-green-800'
-    case 'Cancelada':
-      return 'bg-red-50 border-red-200 text-red-800'
-    default:
-      return 'bg-gray-50 border-gray-200 text-gray-800'
-  }
-}
+const emptyRequest: Request = { surgeryIds: [], action: 'reprogramar', date: '', time: '', reason: '' }
 
 export default function MiAgendaCirujano() {
-  const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'pendientes' | 'programadas' | 'historial'>('pendientes')
-  const [showSolicitudModal, setShowSolicitudModal] = useState(false)
-  const [solicitud, setSolicitud] = useState<SolicitudModificacion>({
-    turnosAfectados: [],
-    accion: 'reprogramar',
-    nuevoHorario: '',
-    nuevaFecha: '',
-    justificacion: '',
-  })
+  const [surgeries, setSurgeries] = useState<Cirugia[]>(() => mockCirugias.filter((surgery) => surgery.cirujanoId === 'p3'))
+  const [approvedIds, setApprovedIds] = useState<string[]>([])
+  const [tab, setTab] = useState<Tab>('pendientes')
+  const [selected, setSelected] = useState<Cirugia | null>(null)
+  const [approveId, setApproveId] = useState<string | null>(null)
+  const [rejectId, setRejectId] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [request, setRequest] = useState<Request>(emptyRequest)
 
-  // Simular cirugias del cirujano actual (usando p1 como ejemplo)
-  const misCirugias = mockCirugias.filter(c => c.cirujanoId === 'p1')
-  
-  const pendientesAprobacion = misCirugias.filter(c => c.estado === 'Pendiente' || c.estado === 'Programada')
-  const programadas = misCirugias.filter(c => c.estado === 'Programada' && c.fecha)
-  const historial = misCirugias.filter(c => c.estado === 'Completada' || c.estado === 'Cancelada')
+  const groups = useMemo(() => ({
+    pendientes: surgeries.filter((surgery) => surgery.estado === 'Programada' && !approvedIds.includes(surgery.id)),
+    programadas: surgeries.filter((surgery) => (surgery.estado === 'Programada' && approvedIds.includes(surgery.id)) || surgery.estado === 'En Curso'),
+    historial: surgeries.filter((surgery) => surgery.estado === 'Completada' || surgery.estado === 'Cancelada'),
+  }), [approvedIds, surgeries])
 
-  const handleTurnoToggle = (cirugiaId: string) => {
-    setSolicitud(prev => ({
-      ...prev,
-      turnosAfectados: prev.turnosAfectados.includes(cirugiaId)
-        ? prev.turnosAfectados.filter(id => id !== cirugiaId)
-        : [...prev.turnosAfectados, cirugiaId]
-    }))
+  const approve = () => {
+    if (!approveId) return
+    setApprovedIds((ids) => [...ids, approveId])
+    setApproveId(null)
+    toast({ title: 'Asignación aprobada', description: 'La cirugía pasó a Mis cirugías programadas durante esta sesión.' })
+  }
+  const reject = () => {
+    if (!rejectId || !rejectReason.trim()) return
+    setSurgeries((current) => current.map((surgery) => surgery.id === rejectId ? { ...surgery, estado: 'Cancelada', observaciones: `Rechazo simulado: ${rejectReason.trim()}` } : surgery))
+    setRejectId(null)
+    setRejectReason('')
+    toast({ title: 'Asignación rechazada', description: 'Se registró el motivo y la cirugía pasó al historial simulado.' })
+  }
+  const submitRequest = () => {
+    toast({ title: 'Solicitud enviada', description: 'El cambio quedó registrado como simulación durante esta sesión.' })
+    setRequest(emptyRequest)
+    setRequestOpen(false)
   }
 
-  const handleSubmitSolicitud = () => {
-    console.log('Solicitud enviada:', solicitud)
-    setShowSolicitudModal(false)
-    setSolicitud({
-      turnosAfectados: [],
-      accion: 'reprogramar',
-      nuevoHorario: '',
-      nuevaFecha: '',
-      justificacion: '',
-    })
-  }
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'pendientes', label: 'Pendientes de aprobación' },
+    { id: 'programadas', label: 'Mis cirugías programadas' },
+    { id: 'historial', label: 'Historial' },
+  ]
+  const current = groups[tab]
 
-  const tabs = [
-    { id: 'pendientes', label: 'Pendientes de Aprobacion', count: pendientesAprobacion.length },
-    { id: 'programadas', label: 'Mis Cirugias Programadas', count: programadas.length },
-    { id: 'historial', label: 'Historial', count: historial.length },
-  ] as const
+  return <div className="space-y-6">
+    <PageHeader eyebrow="Perfil simulado · Dr. Rodríguez" title="Mi agenda" description="Revise asignaciones sin duplicados entre pestañas y registre decisiones durante esta sesión." actions={<button type="button" onClick={() => setRequestOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"><Edit3 size={18} />Solicitar modificación</button>} />
 
-  const getCurrentCirugias = () => {
-    switch (activeTab) {
-      case 'pendientes':
-        return pendientesAprobacion
-      case 'programadas':
-        return programadas
-      case 'historial':
-        return historial
-      default:
-        return []
-    }
-  }
+    <div role="tablist" aria-label="Secciones de la agenda" className="flex gap-2 border-b">{tabs.map((item) => <button type="button" role="tab" aria-selected={tab === item.id} key={item.id} onClick={() => setTab(item.id)} className={`border-b-2 px-4 py-3 text-sm font-medium ${tab === item.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-muted-foreground'}`}>{item.label}<span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${tab === item.id ? 'bg-blue-100 text-blue-700' : 'bg-muted'}`}>{groups[item.id].length}</span></button>)}</div>
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Mi Agenda</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gestion de cirugias asignadas a {user?.nombre || 'Dr. Lopez'}
-          </p>
-        </div>
-        <button
-          onClick={() => setShowSolicitudModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Edit3 size={18} />
-          Solicitar Modificacion
-        </button>
-      </div>
+    {current.length === 0 ? <EmptyState icon={FileText} title="No hay cirugías en esta sección" description={tab === 'pendientes' ? 'No quedan asignaciones pendientes de una decisión.' : 'Las acciones realizadas aparecerán aquí cuando corresponda.'} /> : <div className="space-y-4">{current.map((surgery) => <article key={surgery.id} className="rounded-xl border bg-card p-5 transition-shadow hover:shadow-md"><button type="button" onClick={() => setSelected(surgery)} className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><div className="flex items-start justify-between"><div><div className="flex items-center gap-3"><h3 className="text-lg font-semibold">{surgery.paciente}</h3><SurgeryStatusBadge status={surgery.estado} /></div><p className="mt-2 text-muted-foreground">{surgery.intervencion}</p><div className="mt-3 flex gap-6 text-sm text-muted-foreground"><span className="inline-flex items-center gap-1.5"><Calendar size={14} />{surgery.fecha || 'Sin fecha'}</span><span className="inline-flex items-center gap-1.5"><Clock size={14} />{surgery.hora || 'Sin hora'}</span><span>{surgery.quirofano || 'Sin quirófano'}</span></div></div><span className="text-xs text-blue-700">Ver detalle</span></div></button>{tab === 'pendientes' && <div className="mt-4 flex gap-2 border-t pt-4"><button type="button" onClick={() => setApproveId(surgery.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-800"><Check size={14} />Aprobar</button><button type="button" onClick={() => { setRequest((value) => ({ ...value, surgeryIds: [surgery.id] })); setRequestOpen(true) }} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800"><Edit3 size={14} />Solicitar cambio</button><button type="button" onClick={() => setRejectId(surgery.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-800"><X size={14} />Rechazar</button></div>}</article>)}</div>}
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-border">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-              activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-muted text-muted-foreground'
-            }`}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
-      </div>
+    {selected && <ViewCirugia cirugia={selected} onClose={() => setSelected(null)} />}
+    <ConfirmActionDialog open={Boolean(approveId)} onOpenChange={(open) => { if (!open) setApproveId(null) }} title="Aprobar asignación" description="La cirugía pasará a Mis cirugías programadas durante esta sesión simulada." confirmLabel="Aprobar asignación" tone="primary" onConfirm={approve} />
 
-      {/* Lista de cirugias */}
-      <div className="space-y-4">
-        {getCurrentCirugias().length === 0 ? (
-          <div className="text-center py-12 bg-card rounded-xl border border-border">
-            <FileText size={40} className="mx-auto text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">No hay cirugias en esta seccion</p>
-          </div>
-        ) : (
-          getCurrentCirugias().map((cirugia) => (
-            <div
-              key={cirugia.id}
-              className={`bg-card rounded-xl border border-border p-5 hover:shadow-md transition-shadow`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold text-foreground text-lg">{cirugia.paciente}</h3>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(cirugia.estado)}`}>
-                      {cirugia.estado}
-                    </span>
-                    {cirugia.prioridad === 'Alta' || cirugia.prioridad === 'Emergencia' ? (
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                        cirugia.prioridad === 'Emergencia' ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'
-                      }`}>
-                        {cirugia.prioridad}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-muted-foreground mb-3">{cirugia.intervencion}</p>
-                  <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                    {cirugia.fecha && (
-                      <span className="flex items-center gap-1.5">
-                        <Calendar size={14} />
-                        {cirugia.fecha}
-                      </span>
-                    )}
-                    {cirugia.hora && (
-                      <span className="flex items-center gap-1.5">
-                        <Clock size={14} />
-                        {cirugia.hora}
-                      </span>
-                    )}
-                    {cirugia.quirofano && (
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                        {cirugia.quirofano}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight size={20} className="text-muted-foreground" />
-              </div>
+    {rejectId && <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"><div role="dialog" aria-modal="true" aria-labelledby="agenda-reject-title" className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl"><h2 id="agenda-reject-title" className="text-xl font-bold">Rechazar asignación</h2><p className="mt-2 text-sm text-muted-foreground">El motivo es obligatorio y quedará visible en el historial simulado.</p><label htmlFor="agenda-reject-reason" className="mt-4 block text-sm font-medium">Motivo *</label><textarea id="agenda-reject-reason" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} rows={4} className="mt-2 w-full rounded-lg border bg-background p-3" /><div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => { setRejectId(null); setRejectReason('') }} className="rounded-lg bg-muted px-4 py-2">Cancelar</button><button type="button" disabled={!rejectReason.trim()} onClick={reject} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50">Confirmar rechazo</button></div></div></div>}
 
-              {/* Acciones para pendientes */}
-              {activeTab === 'pendientes' && cirugia.estado === 'Programada' && (
-                <div className="mt-4 pt-4 border-t border-border flex gap-2">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors">
-                    <Check size={14} />
-                    Aprobar
-                  </button>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200 transition-colors">
-                    <Edit3 size={14} />
-                    Solicitar Cambio
-                  </button>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors">
-                    <X size={14} />
-                    Rechazar
-                  </button>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Modal de Solicitud de Modificacion */}
-      {showSolicitudModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-card rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto mx-4">
-            <div className="p-6 border-b border-border">
-              <h2 className="text-xl font-bold text-foreground">Solicitar Modificacion</h2>
-              <p className="text-sm text-muted-foreground mt-1">Complete el formulario para solicitar cambios en sus turnos</p>
-            </div>
-
-            <div className="p-6 space-y-5">
-              {/* Turnos afectados */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Turnos Afectados *
-                </label>
-                <div className="space-y-2 max-h-40 overflow-y-auto border border-input rounded-lg p-3">
-                  {programadas.map(cirugia => (
-                    <label key={cirugia.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
-                      <input
-                        type="checkbox"
-                        checked={solicitud.turnosAfectados.includes(cirugia.id)}
-                        onChange={() => handleTurnoToggle(cirugia.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-foreground">
-                        {cirugia.paciente} - {cirugia.fecha} {cirugia.hora}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Accion */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Accion *
-                </label>
-                <select
-                  value={solicitud.accion}
-                  onChange={(e) => setSolicitud(prev => ({ ...prev, accion: e.target.value as SolicitudModificacion['accion'] }))}
-                  className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="reprogramar">Reprogramar</option>
-                  <option value="cancelar">Cancelar</option>
-                  <option value="cambiar_equipo">Cambiar Equipo Medico</option>
-                </select>
-              </div>
-
-              {/* Nuevo horario (condicional) */}
-              {solicitud.accion === 'reprogramar' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Nueva Fecha
-                    </label>
-                    <input
-                      type="date"
-                      value={solicitud.nuevaFecha}
-                      onChange={(e) => setSolicitud(prev => ({ ...prev, nuevaFecha: e.target.value }))}
-                      className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Nuevo Horario
-                    </label>
-                    <input
-                      type="time"
-                      value={solicitud.nuevoHorario}
-                      onChange={(e) => setSolicitud(prev => ({ ...prev, nuevoHorario: e.target.value }))}
-                      className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Justificacion */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Justificacion *
-                </label>
-                <textarea
-                  value={solicitud.justificacion}
-                  onChange={(e) => setSolicitud(prev => ({ ...prev, justificacion: e.target.value }))}
-                  placeholder="Explique el motivo de la solicitud..."
-                  rows={4}
-                  className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-
-              {/* Botones */}
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  onClick={() => setShowSolicitudModal(false)}
-                  className="px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/80 font-medium transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSubmitSolicitud}
-                  disabled={solicitud.turnosAfectados.length === 0 || !solicitud.justificacion}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium transition-colors"
-                >
-                  Enviar Solicitud
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+    {requestOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"><div role="dialog" aria-modal="true" aria-labelledby="request-title" className="w-full max-w-lg rounded-xl bg-card shadow-2xl"><div className="border-b p-6"><h2 id="request-title" className="text-xl font-bold">Solicitar modificación</h2><p className="mt-1 text-sm text-muted-foreground">La solicitud se registra sólo en esta simulación.</p></div><div className="space-y-5 p-6"><fieldset><legend className="mb-2 text-sm font-medium">Cirugías afectadas *</legend><div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">{groups.programadas.map((surgery) => <label key={surgery.id} className="flex items-center gap-2 rounded p-2 text-sm hover:bg-muted"><input type="checkbox" checked={request.surgeryIds.includes(surgery.id)} onChange={() => setRequest((value) => ({ ...value, surgeryIds: value.surgeryIds.includes(surgery.id) ? value.surgeryIds.filter((id) => id !== surgery.id) : [...value.surgeryIds, surgery.id] }))} />{surgery.paciente} · {surgery.fecha} {surgery.hora}</label>)}{groups.programadas.length === 0 && <p className="p-3 text-sm text-muted-foreground">Primero apruebe una asignación.</p>}</div></fieldset><label className="block text-sm font-medium">Acción *<select value={request.action} onChange={(event) => setRequest((value) => ({ ...value, action: event.target.value as Request['action'] }))} className="mt-2 w-full rounded-lg border bg-background p-2.5"><option value="reprogramar">Reprogramar</option><option value="cancelar">Cancelar</option><option value="cambiar_equipo">Cambiar equipo médico</option></select></label>{request.action === 'reprogramar' && <div className="grid grid-cols-2 gap-4"><label className="text-sm font-medium">Nueva fecha<input type="date" value={request.date} onChange={(event) => setRequest((value) => ({ ...value, date: event.target.value }))} className="mt-2 w-full rounded-lg border p-2.5" /></label><label className="text-sm font-medium">Nueva hora<input type="time" value={request.time} onChange={(event) => setRequest((value) => ({ ...value, time: event.target.value }))} className="mt-2 w-full rounded-lg border p-2.5" /></label></div>}<label className="block text-sm font-medium">Justificación *<textarea value={request.reason} onChange={(event) => setRequest((value) => ({ ...value, reason: event.target.value }))} rows={4} className="mt-2 w-full rounded-lg border p-3" /></label></div><div className="flex justify-end gap-3 border-t p-5"><button type="button" onClick={() => setRequestOpen(false)} className="rounded-lg bg-muted px-4 py-2">Cancelar</button><button type="button" disabled={request.surgeryIds.length === 0 || !request.reason.trim()} onClick={submitRequest} className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Enviar solicitud</button></div></div></div>}
+  </div>
 }

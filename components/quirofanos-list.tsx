@@ -3,13 +3,16 @@
 import { useState } from 'react'
 import { Plus, Edit2, Trash2, X, Stethoscope, Search } from 'lucide-react'
 import { mockQuirofanos, Quirofano, getCirugiasHoy } from '@/lib/mock-data'
+import { toast } from '@/hooks/use-toast'
+import ConfirmActionDialog from './confirm-action-dialog'
 
 export default function QuirofanosList() {
-  const quirofanos = mockQuirofanos
+  const [quirofanos, setQuirofanos] = useState<Quirofano[]>(() => [...mockQuirofanos])
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'todos' | 'disponibles' | 'no-disponibles'>('todos')
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Omit<Quirofano, 'id'>>({
     nombre: '',
     piso: '',
@@ -41,7 +44,22 @@ export default function QuirofanosList() {
     setShowModal(true)
   }
 
-  const handleSave = () => setShowModal(false)
+  const handleSave = () => {
+    if (!formData.nombre.trim()) return
+    setQuirofanos((current) => editingId ? current.map((item) => item.id === editingId ? { ...item, ...formData } : item) : [...current, { id: `room-${Date.now()}`, ...formData }])
+    setShowModal(false)
+    toast({ title: editingId ? 'Quirófano actualizado' : 'Quirófano creado', description: 'El cambio se conserva durante esta sesión simulada.' })
+  }
+  const toggleAvailability = (id: string) => {
+    setQuirofanos((current) => current.map((item) => item.id === id ? { ...item, disponible: !item.disponible } : item))
+    toast({ title: 'Disponibilidad actualizada', description: 'El estado operativo cambió en el mock.' })
+  }
+  const remove = () => {
+    if (!deleteId) return
+    setQuirofanos((current) => current.filter((item) => item.id !== deleteId))
+    setDeleteId(null)
+    toast({ title: 'Quirófano eliminado', description: 'Se quitó de la simulación durante esta sesión.' })
+  }
 
   const filteredQuirofanos = quirofanos.filter(q => {
     if (search && !q.nombre.toLowerCase().includes(search.toLowerCase())) return false
@@ -55,15 +73,15 @@ export default function QuirofanosList() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Quirofanos</h1>
-          <p className="text-sm text-muted-foreground mt-1">Gestion y estado de quirofanos</p>
+          <h1 className="text-3xl font-bold text-foreground">Quirófanos</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gestión y estado de quirófanos</p>
         </div>
         <button
           onClick={() => handleOpenModal()}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus size={18} />
-          Nuevo Quirofano
+          Nuevo quirófano
         </button>
       </div>
 
@@ -133,6 +151,7 @@ export default function QuirofanosList() {
                   <span className="text-sm text-muted-foreground">Disponible:</span>
                   <button
                     type="button"
+                    onClick={() => toggleAvailability(quirofano.id)}
                     aria-label={`Disponibilidad de ${quirofano.nombre}`}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       quirofano.disponible ? 'bg-green-500' : 'bg-gray-300'
@@ -156,6 +175,8 @@ export default function QuirofanosList() {
                   <button
                     type="button"
                     aria-label={`Eliminar ${quirofano.nombre}`}
+                    title="Eliminar quirófano"
+                    onClick={() => setDeleteId(quirofano.id)}
                     className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                   >
                     <Trash2 size={16} />
@@ -170,12 +191,12 @@ export default function QuirofanosList() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-card rounded-xl shadow-2xl max-w-md w-full mx-4">
+          <div role="dialog" aria-modal="true" className="bg-card rounded-xl shadow-2xl max-w-md w-full mx-4">
             <div className="p-6 border-b border-border flex items-center justify-between">
               <h2 className="text-xl font-bold text-foreground">
-                {editingId ? 'Editar Quirofano' : 'Nuevo Quirofano'}
+                {editingId ? 'Editar quirófano' : 'Nuevo quirófano'}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-muted rounded-lg">
+              <button aria-label="Cerrar" onClick={() => setShowModal(false)} className="p-2 hover:bg-muted rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -187,12 +208,12 @@ export default function QuirofanosList() {
                   type="text"
                   value={formData.nombre}
                   onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
-                  placeholder="Ej: Quirofano A"
+                  placeholder="Ej.: Quirófano A"
                   className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Ubicacion / Piso (opcional)</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Ubicación / piso (opcional)</label>
                 <input
                   type="text"
                   value={formData.piso}
@@ -227,7 +248,8 @@ export default function QuirofanosList() {
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  disabled={!formData.nombre.trim()}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
                 >
                   {editingId ? 'Guardar' : 'Crear'}
                 </button>
@@ -236,6 +258,7 @@ export default function QuirofanosList() {
           </div>
         </div>
       )}
+      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Eliminar quirófano" description="Se quitará de la lista simulada durante esta sesión." confirmLabel="Eliminar" onConfirm={remove} />
     </div>
   )
 }

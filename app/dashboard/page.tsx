@@ -4,20 +4,18 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import Sidebar from '@/components/sidebar'
+import MockDataNotice from '@/components/mock-data-notice'
+import PageHeader from '@/components/page-header'
 import { 
   Calendar, 
   Clock, 
   AlertTriangle, 
   Stethoscope, 
   AlertCircle,
-  TrendingUp,
-  Users,
   Activity
 } from 'lucide-react'
 import { 
-  mockCirugias, 
-  mockQuirofanos, 
-  mockAlertas,
+  mockQuirofanos,
   getCirugiasHoy,
   getCirugiasPendientes,
   getAlertasCriticas
@@ -59,7 +57,8 @@ export default function DashboardPage() {
       color: 'bg-blue-500',
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-700',
-      subtitle: `${cirugiasHoy.filter(c => c.estado === 'Completada').length} completadas`
+      subtitle: `${cirugiasHoy.filter(c => c.estado === 'Completada').length} completadas`,
+      href: '/cirugias',
     },
     {
       title: 'Pendientes',
@@ -68,7 +67,8 @@ export default function DashboardPage() {
       color: 'bg-amber-500',
       bgColor: 'bg-amber-50',
       textColor: 'text-amber-700',
-      subtitle: 'Sin asignar'
+      subtitle: 'Sin asignar',
+      href: '/cirugias',
     },
     {
       title: 'Emergencias',
@@ -77,7 +77,8 @@ export default function DashboardPage() {
       color: 'bg-red-500',
       bgColor: 'bg-red-50',
       textColor: 'text-red-700',
-      subtitle: 'Hoy'
+      subtitle: 'Hoy',
+      href: '/emergencias',
     },
     {
       title: 'Quirófanos Libres',
@@ -86,7 +87,8 @@ export default function DashboardPage() {
       color: 'bg-green-500',
       bgColor: 'bg-green-50',
       textColor: 'text-green-700',
-      subtitle: `de ${mockQuirofanos.length} totales`
+      subtitle: `de ${mockQuirofanos.length} totales`,
+      href: '/quirofanos',
     },
     {
       title: 'Alertas Críticas',
@@ -95,7 +97,8 @@ export default function DashboardPage() {
       color: 'bg-purple-500',
       bgColor: 'bg-purple-50',
       textColor: 'text-purple-700',
-      subtitle: 'Requieren atención'
+      subtitle: 'Requieren atención',
+      href: '/cirugias',
     },
   ]
 
@@ -103,22 +106,20 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-background">
       <Sidebar activePage="dashboard" />
       <div className="flex-1 flex flex-col overflow-hidden">
+        <MockDataNotice />
         <main className="flex-1 overflow-auto">
           <div className="p-6 md:p-8">
-            {/* Header */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-              <p className="text-muted-foreground mt-1">
-                Bienvenido/a, {user?.nombre}. Vista general del sistema.
-              </p>
-            </div>
+            <PageHeader className="mb-8" title="Dashboard" description={`Bienvenido/a, ${user?.nombre}. Estas son las tareas y situaciones que requieren atención hoy.`} />
 
             {/* Widgets Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
               {widgets.map((widget, index) => (
-                <div
+                <button
+                  type="button"
                   key={index}
-                  className="bg-card rounded-xl border border-border p-5 hover:shadow-md transition-shadow"
+                  onClick={() => router.push(widget.href)}
+                  className="rounded-xl border border-border bg-card p-5 text-left transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  aria-label={`${widget.title}: ${widget.value}. ${widget.subtitle}`}
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -130,7 +131,7 @@ export default function DashboardPage() {
                       <widget.icon className={widget.textColor} size={22} />
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -158,7 +159,11 @@ export default function DashboardPage() {
                       {cirugiasHoy.slice(0, 5).map((cirugia) => (
                         <div
                           key={cirugia.id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => router.push('/cirugias')}
+                          onKeyDown={(event) => event.key === 'Enter' && router.push('/cirugias')}
+                          className="flex cursor-pointer items-center justify-between rounded-lg bg-muted/50 p-3 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-2 h-2 rounded-full ${
@@ -202,7 +207,11 @@ export default function DashboardPage() {
                       {alertasCriticas.map((alerta) => (
                         <div
                           key={alerta.id}
-                          className="flex items-start gap-3 p-3 rounded-lg bg-red-50 border border-red-100"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => router.push(alerta.tipo === 'insumo' ? '/insumos' : alerta.tipo === 'personal' ? '/personal' : '/cirugias')}
+                          onKeyDown={(event) => event.key === 'Enter' && router.push(alerta.tipo === 'insumo' ? '/insumos' : alerta.tipo === 'personal' ? '/personal' : '/cirugias')}
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-red-100 bg-red-50 p-3 hover:border-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                         >
                           <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
                           <div>

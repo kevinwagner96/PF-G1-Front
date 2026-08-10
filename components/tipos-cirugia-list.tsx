@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Plus, Search, Edit2, Trash2, X } from 'lucide-react'
 import { mockTiposCirugia, TipoCirugia } from '@/lib/mock-data'
+import { toast } from '@/hooks/use-toast'
+import ConfirmActionDialog from './confirm-action-dialog'
 
 const especialidades = [
   'Traumatología', 'Oftalmología', 'Cirugía General', 'Cardiología', 'Neurología',
@@ -12,15 +14,17 @@ const especialidades = [
 const complejidades = ['Baja', 'Media', 'Alta'] as const
 
 export default function TiposCirugiaList() {
-  const tipos = mockTiposCirugia
+  const [tipos, setTipos] = useState<TipoCirugia[]>(() => [...mockTiposCirugia])
   const [search, setSearch] = useState('')
   const [filterEspecialidad, setFilterEspecialidad] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState<Pick<TipoCirugia, 'nombre' | 'especialidad' | 'complejidad' | 'descripcion' | 'estado'>>({
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [formData, setFormData] = useState<Pick<TipoCirugia, 'nombre' | 'especialidad' | 'complejidad' | 'duracionEstimada' | 'descripcion' | 'estado'>>({
     nombre: '',
     especialidad: '',
     complejidad: 'Media',
+    duracionEstimada: 60,
     descripcion: '',
     estado: true,
   })
@@ -38,6 +42,7 @@ export default function TiposCirugiaList() {
         nombre: t.nombre,
         especialidad: t.especialidad,
         complejidad: t.complejidad,
+        duracionEstimada: t.duracionEstimada,
         descripcion: t.descripcion,
         estado: t.estado,
       })
@@ -47,6 +52,7 @@ export default function TiposCirugiaList() {
         nombre: '',
         especialidad: '',
         complejidad: 'Media',
+        duracionEstimada: 60,
         descripcion: '',
         estado: true,
       })
@@ -54,7 +60,22 @@ export default function TiposCirugiaList() {
     setShowModal(true)
   }
 
-  const handleSave = () => setShowModal(false)
+  const handleSave = () => {
+    if (!formData.nombre.trim() || !formData.especialidad || formData.duracionEstimada <= 0) return
+    setTipos((current) => editingId ? current.map((item) => item.id === editingId ? { ...item, ...formData } : item) : [...current, { id: `procedure-${Date.now()}`, ...formData }])
+    setShowModal(false)
+    toast({ title: editingId ? 'Tipo actualizado' : 'Tipo de cirugía creado', description: 'El cambio se conserva durante esta sesión simulada.' })
+  }
+  const toggleStatus = (id: string) => {
+    setTipos((current) => current.map((item) => item.id === id ? { ...item, estado: !item.estado } : item))
+    toast({ title: 'Estado actualizado', description: 'El catálogo simulado fue actualizado.' })
+  }
+  const remove = () => {
+    if (!deleteId) return
+    setTipos((current) => current.filter((item) => item.id !== deleteId))
+    setDeleteId(null)
+    toast({ title: 'Tipo eliminado', description: 'Se quitó del catálogo durante esta sesión.' })
+  }
 
   const getComplejidadColor = (complejidad: string) => {
     switch (complejidad) {
@@ -74,15 +95,15 @@ export default function TiposCirugiaList() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Tipos de Cirugia</h1>
-          <p className="text-sm text-muted-foreground mt-1">Catalogo de intervenciones quirurgicas</p>
+          <h1 className="text-3xl font-bold text-foreground">Tipos de cirugía</h1>
+          <p className="text-sm text-muted-foreground mt-1">Catálogo de intervenciones quirúrgicas</p>
         </div>
         <button
           onClick={() => handleOpenModal()}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus size={18} />
-          Nuevo Tipo
+          Nuevo tipo
         </button>
       </div>
 
@@ -118,7 +139,8 @@ export default function TiposCirugiaList() {
               <th className="px-4 py-3 text-left font-semibold text-foreground">Nombre</th>
               <th className="px-4 py-3 text-left font-semibold text-foreground">Especialidad</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Complejidad</th>
-              <th className="px-4 py-3 text-left font-semibold text-foreground">Descripcion</th>
+              <th className="px-4 py-3 text-left font-semibold text-foreground">Duración</th>
+              <th className="px-4 py-3 text-left font-semibold text-foreground">Descripción</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Estado</th>
               <th className="px-4 py-3 text-center font-semibold text-foreground">Acciones</th>
             </tr>
@@ -133,10 +155,12 @@ export default function TiposCirugiaList() {
                     {tipo.complejidad}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-muted-foreground">{tipo.duracionEstimada} min</td>
                 <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate">{tipo.descripcion}</td>
                 <td className="px-4 py-3 text-center">
                   <button
                     type="button"
+                    onClick={() => toggleStatus(tipo.id)}
                     aria-label={`Estado de ${tipo.nombre}`}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       tipo.estado ? 'bg-green-500' : 'bg-gray-300'
@@ -161,6 +185,8 @@ export default function TiposCirugiaList() {
                     <button
                       type="button"
                       aria-label={`Eliminar ${tipo.nombre}`}
+                      title="Eliminar tipo"
+                      onClick={() => setDeleteId(tipo.id)}
                       className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                     >
                       <Trash2 size={16} />
@@ -174,18 +200,18 @@ export default function TiposCirugiaList() {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Mostrando {filteredTipos.length} de {tipos.length} tipos de cirugia
+        Mostrando {filteredTipos.length} de {tipos.length} tipos de cirugía
       </p>
 
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-card rounded-xl shadow-2xl max-w-lg w-full mx-4">
+          <div role="dialog" aria-modal="true" className="bg-card rounded-xl shadow-2xl max-w-lg w-full mx-4">
             <div className="p-6 border-b border-border flex items-center justify-between">
               <h2 className="text-xl font-bold text-foreground">
-                {editingId ? 'Editar Tipo de Cirugia' : 'Nuevo Tipo de Cirugia'}
+                {editingId ? 'Editar tipo de cirugía' : 'Nuevo tipo de cirugía'}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-muted rounded-lg">
+              <button aria-label="Cerrar" onClick={() => setShowModal(false)} className="p-2 hover:bg-muted rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -197,7 +223,7 @@ export default function TiposCirugiaList() {
                   type="text"
                   value={formData.nombre}
                   onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
-                  placeholder="Ej: Apendicectomia"
+                  placeholder="Ej.: Apendicectomía"
                   className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -229,11 +255,15 @@ export default function TiposCirugiaList() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Descripcion</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Duración estimada (minutos) *</label>
+                <input type="number" min="1" value={formData.duracionEstimada} onChange={(e) => setFormData(prev => ({ ...prev, duracionEstimada: Number(e.target.value) }))} className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Descripción</label>
                 <textarea
                   value={formData.descripcion}
                   onChange={(e) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
-                  placeholder="Descripcion del procedimiento..."
+                  placeholder="Descripción del procedimiento..."
                   rows={3}
                   className="w-full px-4 py-2.5 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
@@ -264,7 +294,8 @@ export default function TiposCirugiaList() {
                 </button>
                 <button
                   onClick={handleSave}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  disabled={!formData.nombre.trim() || !formData.especialidad || formData.duracionEstimada <= 0}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
                 >
                   {editingId ? 'Guardar' : 'Crear'}
                 </button>
@@ -273,6 +304,7 @@ export default function TiposCirugiaList() {
           </div>
         </div>
       )}
+      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Eliminar tipo de cirugía" description="Se quitará del catálogo simulado durante esta sesión." confirmLabel="Eliminar" onConfirm={remove} />
     </div>
   )
 }

@@ -109,24 +109,11 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-            </div>
-
-            {/* Recordar sesión y olvidé contraseña */}
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-gray-600">Recordar sesión</span>
-              </label>
-              <button type="button" className="text-blue-600 hover:text-blue-700 font-medium">
-                ¿Olvidaste tu contraseña?
-              </button>
             </div>
 
             {/* Botón submit */}
@@ -146,8 +133,8 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Credenciales de prueba */}
-          <div className="mt-6 pt-6 border-t border-gray-100">
+          {process.env.NODE_ENV !== 'production' && (
+          <div className="mt-6 border-t border-gray-100 pt-6">
             <p className="text-xs text-gray-500 mb-3">Credenciales de prueba:</p>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between p-2 bg-gray-50 rounded">
@@ -164,11 +151,12 @@ export default function LoginPage() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 mt-6">
-          © 2025 SurgiCare. Todos los derechos reservados.
+          © {new Date().getFullYear()} SurgiCare. Todos los derechos reservados.
         </p>
       </div>
     </div>

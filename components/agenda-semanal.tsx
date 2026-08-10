@@ -1,235 +1,71 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Clock, User, Stethoscope, AlertTriangle } from 'lucide-react'
-import { mockCirugias, mockQuirofanos, getCirugiasPendientes, Cirugia } from '@/lib/mock-data'
+import { useMemo, useState } from 'react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Stethoscope, User, X } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
+import { Cirugia, mockCirugias, mockQuirofanos } from '@/lib/mock-data'
+import PageHeader from './page-header'
+import ViewCirugia from './view-cirugia-modal'
 
-const getStatusColor = (estado: string) => {
-  switch (estado) {
-    case 'Pendiente':
-      return 'bg-gray-100 border-gray-300 text-gray-700'
-    case 'Programada':
-      return 'bg-blue-100 border-blue-300 text-blue-800'
-    case 'En Curso':
-      return 'bg-yellow-100 border-yellow-400 text-yellow-800'
-    case 'Completada':
-      return 'bg-green-100 border-green-300 text-green-800'
-    case 'Cancelada':
-      return 'bg-red-100 border-red-300 text-red-800'
-    default:
-      return 'bg-gray-100 border-gray-300 text-gray-700'
-  }
+const statusClasses: Record<Cirugia['estado'], string> = {
+  Pendiente: 'bg-slate-100 border-slate-400 text-slate-800', Programada: 'bg-blue-50 border-blue-500 text-blue-800',
+  'En Curso': 'bg-amber-50 border-amber-500 text-amber-900', Completada: 'bg-emerald-50 border-emerald-500 text-emerald-800', Cancelada: 'bg-red-50 border-red-500 text-red-800',
 }
 
-const getPriorityBadge = (prioridad: string) => {
-  switch (prioridad) {
-    case 'Emergencia':
-      return 'bg-red-500 text-white'
-    case 'Alta':
-      return 'bg-orange-500 text-white'
-    case 'Media':
-      return 'bg-yellow-500 text-white'
-    default:
-      return 'bg-gray-400 text-white'
-  }
+function toDateInput(date: Date) {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getWeekDates(date: Date) {
+  const start = new Date(date)
+  const weekday = start.getDay()
+  start.setDate(start.getDate() - weekday + (weekday === 0 ? -6 : 1))
+  return Array.from({ length: 7 }, (_, index) => { const day = new Date(start); day.setDate(start.getDate() + index); return day })
 }
 
 export default function AgendaSemanal() {
   const [currentDate, setCurrentDate] = useState(new Date())
-  
-  // Get week dates
-  const getWeekDates = (date: Date) => {
-    const week = []
-    const start = new Date(date)
-    const day = start.getDay()
-    const diff = start.getDate() - day + (day === 0 ? -6 : 1) // Adjust for Monday start
-    start.setDate(diff)
-    
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
-      week.push(d)
-    }
-    return week
+  const [surgeries, setSurgeries] = useState<Cirugia[]>(() => [...mockCirugias])
+  const [selected, setSelected] = useState<Cirugia | null>(null)
+  const [assigning, setAssigning] = useState<Cirugia | null>(null)
+  const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate])
+  const [assignment, setAssignment] = useState({ date: toDateInput(weekDates[0]), time: '08:00', roomId: '' })
+  const pending = surgeries.filter((surgery) => surgery.estado === 'Pendiente')
+
+  const navigateWeek = (direction: number) => setCurrentDate((value) => { const next = new Date(value); next.setDate(next.getDate() + direction * 7); return next })
+  const openAssignment = (surgery: Cirugia) => {
+    setAssigning(surgery)
+    setAssignment({ date: toDateInput(weekDates[0]), time: '08:00', roomId: '' })
+  }
+  const saveAssignment = () => {
+    if (!assigning || !assignment.date || !assignment.time || !assignment.roomId) return
+    const room = mockQuirofanos.find((item) => item.id === assignment.roomId)
+    setSurgeries((current) => current.map((surgery) => surgery.id === assigning.id ? { ...surgery, fecha: assignment.date, hora: assignment.time, quirofanoId: assignment.roomId, quirofano: room?.nombre ?? '', estado: 'Programada' } : surgery))
+    setAssigning(null)
+    toast({ title: 'Cirugía asignada', description: 'La agenda simulada se actualizó durante esta sesión.' })
   }
 
-  const weekDates = getWeekDates(currentDate)
-  const pendientes = getCirugiasPendientes()
+  return <div className="space-y-6">
+    <PageHeader eyebrow="Agenda mock" title="Agenda semanal" description="Seleccione una cirugía para ver su detalle o asigne solicitudes pendientes a un horario simulado." actions={<div className="flex items-center gap-2"><button type="button" onClick={() => navigateWeek(-1)} aria-label="Semana anterior" className="rounded-lg p-2 hover:bg-muted"><ChevronLeft /></button><span className="min-w-48 text-center text-sm font-medium capitalize">{weekDates[0].toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</span><button type="button" onClick={() => navigateWeek(1)} aria-label="Semana siguiente" className="rounded-lg p-2 hover:bg-muted"><ChevronRight /></button><button type="button" onClick={() => setCurrentDate(new Date())} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">Hoy</button></div>} />
 
-  const formatDate = (date: Date) => date.toISOString().split('T')[0]
+    <div className="flex flex-wrap gap-4 rounded-lg border bg-card px-4 py-3 text-xs text-muted-foreground" aria-label="Leyenda de estados">{Object.entries(statusClasses).map(([status, classes]) => <span key={status} className="inline-flex items-center gap-2"><span className={`h-3 w-3 rounded-sm border-l-4 ${classes}`} />{status}</span>)}</div>
 
-  const getCirugiasForDate = (date: Date) => {
-    const dateStr = formatDate(date)
-    return mockCirugias.filter(c => c.fecha === dateStr && c.estado !== 'Pendiente')
-  }
-
-  const navigateWeek = (direction: number) => {
-    const newDate = new Date(currentDate)
-    newDate.setDate(newDate.getDate() + (direction * 7))
-    setCurrentDate(newDate)
-  }
-
-  const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
-
-  const isToday = (date: Date) => {
-    const today = new Date()
-    return date.toDateString() === today.toDateString()
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Agenda Semanal</h1>
-          <p className="text-sm text-muted-foreground mt-1">Vista de calendario de cirugias programadas</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigateWeek(-1)}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="font-medium text-foreground min-w-[200px] text-center">
-            {weekDates[0].toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-          </span>
-          <button
-            onClick={() => navigateWeek(1)}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
-          >
-            <ChevronRight size={20} />
-          </button>
-          <button
-            onClick={() => setCurrentDate(new Date())}
-            className="ml-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Hoy
-          </button>
-        </div>
+    <div className="flex gap-6">
+      <div className="min-w-0 flex-1 overflow-hidden rounded-xl border bg-card">
+        <div className="grid grid-cols-7 border-b">{weekDates.map((date, index) => <div key={date.toISOString()} className={`border-r p-3 text-center last:border-r-0 ${date.toDateString() === new Date().toDateString() ? 'bg-blue-50' : ''}`}><p className="text-xs font-medium uppercase text-muted-foreground">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][index]}</p><p className="mt-1 text-lg font-bold">{date.getDate()}</p></div>)}</div>
+        <div className="grid min-h-[500px] grid-cols-7">{weekDates.map((date) => {
+          const daily = surgeries.filter((surgery) => surgery.fecha === toDateInput(date) && surgery.estado !== 'Pendiente').sort((a, b) => a.hora.localeCompare(b.hora))
+          return <div key={date.toISOString()} className="border-r p-2 last:border-r-0"><div className="space-y-2">{daily.length === 0 ? <p className="py-6 text-center text-xs text-muted-foreground">Sin cirugías</p> : daily.map((surgery) => <button type="button" key={surgery.id} onClick={() => setSelected(surgery)} className={`w-full rounded-lg border-l-4 p-2 text-left text-xs transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${statusClasses[surgery.estado]}`}><span className="mb-1 flex items-center gap-1 font-semibold"><Clock size={12} />{surgery.hora}</span><span className="block truncate font-medium">{surgery.paciente}</span><span className="flex items-center gap-1 truncate opacity-75"><User size={10} />{surgery.cirujano}</span><span className="flex items-center gap-1 truncate opacity-75"><Stethoscope size={10} />{surgery.quirofano}</span></button>)}</div></div>
+        })}</div>
       </div>
 
-      <div className="flex gap-6">
-        {/* Calendario semanal */}
-        <div className="flex-1">
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            {/* Headers de dias */}
-            <div className="grid grid-cols-7 border-b border-border">
-              {weekDates.map((date, idx) => (
-                <div 
-                  key={idx} 
-                  className={`p-3 text-center border-r border-border last:border-r-0 ${
-                    isToday(date) ? 'bg-blue-50' : ''
-                  }`}
-                >
-                  <p className="text-xs font-medium text-muted-foreground uppercase">{dayNames[idx]}</p>
-                  <p className={`text-lg font-bold mt-1 ${
-                    isToday(date) ? 'text-blue-600' : 'text-foreground'
-                  }`}>
-                    {date.getDate()}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Celdas de cirugias */}
-            <div className="grid grid-cols-7 min-h-[500px]">
-              {weekDates.map((date, idx) => {
-                const cirugias = getCirugiasForDate(date)
-                return (
-                  <div 
-                    key={idx} 
-                    className={`border-r border-border last:border-r-0 p-2 ${
-                      isToday(date) ? 'bg-blue-50/50' : ''
-                    }`}
-                  >
-                    <div className="space-y-2">
-                      {cirugias
-                        .sort((a, b) => (a.hora || '').localeCompare(b.hora || ''))
-                        .map((cirugia) => (
-                        <div
-                          key={cirugia.id}
-                          className={`p-2 rounded-lg border-l-4 text-xs cursor-pointer hover:shadow-md transition-shadow ${getStatusColor(cirugia.estado)}`}
-                        >
-                          <div className="flex items-center gap-1 mb-1">
-                            <Clock size={12} />
-                            <span className="font-semibold">{cirugia.hora}</span>
-                            {cirugia.prioridad !== 'Baja' && (
-                              <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${getPriorityBadge(cirugia.prioridad)}`}>
-                                {cirugia.prioridad === 'Emergencia' ? '!' : cirugia.prioridad[0]}
-                              </span>
-                            )}
-                          </div>
-                          <p className="font-medium truncate">{cirugia.paciente}</p>
-                          <p className="text-muted-foreground truncate flex items-center gap-1">
-                            <User size={10} />
-                            {cirugia.cirujano}
-                          </p>
-                          <p className="text-muted-foreground truncate flex items-center gap-1">
-                            <Stethoscope size={10} />
-                            {cirugia.quirofano}
-                          </p>
-                        </div>
-                      ))}
-                      {cirugias.length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-4">
-                          Sin cirugias
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Panel de pendientes */}
-        <div className="w-80 shrink-0">
-          <div className="bg-card border border-border rounded-xl">
-            <div className="p-4 border-b border-border">
-              <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <AlertTriangle size={18} className="text-amber-500" />
-                Pendientes de Asignacion
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1">{pendientes.length} cirugias sin programar</p>
-            </div>
-            <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
-              {pendientes.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No hay cirugias pendientes
-                </p>
-              ) : (
-                pendientes.map((cirugia) => (
-                  <div
-                    key={cirugia.id}
-                    className="p-3 bg-amber-50 border border-amber-200 rounded-lg"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium text-amber-900 text-sm">{cirugia.paciente}</p>
-                        <p className="text-xs text-amber-700">{cirugia.intervencion}</p>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${getPriorityBadge(cirugia.prioridad)}`}>
-                        {cirugia.prioridad}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-xs">
-                      <span className="text-amber-600">
-                        <Clock size={12} className="inline mr-1" />
-                        {cirugia.tiempoEspera} dias de espera
-                      </span>
-                      <button className="text-blue-600 hover:text-blue-700 font-medium">
-                        Asignar
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <aside className="w-80 shrink-0 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18} className="text-amber-500" />Pendientes de asignación</h2><p className="mt-1 text-xs text-muted-foreground">{pending.length} cirugía{pending.length === 1 ? '' : 's'} sin programar</p></div><div className="max-h-[500px] space-y-3 overflow-y-auto p-4">{pending.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Todas las solicitudes están asignadas.</p> : pending.map((surgery) => <article key={surgery.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium text-amber-950">{surgery.paciente}</p><p className="text-xs text-amber-800">{surgery.intervencion}</p></div><span className="rounded bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">{surgery.prioridad}</span></div><div className="mt-3 flex items-center justify-between text-xs"><span className="text-amber-700">{surgery.tiempoEspera ?? 0} días de espera</span><button type="button" onClick={() => openAssignment(surgery)} className="font-semibold text-blue-700 hover:underline">Asignar</button></div></article>)}</div></aside>
     </div>
-  )
+
+    {selected && <ViewCirugia cirugia={selected} onClose={() => setSelected(null)} />}
+    {assigning && <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"><div role="dialog" aria-modal="true" aria-labelledby="assign-title" className="w-full max-w-lg rounded-xl bg-card shadow-2xl"><div className="flex items-start justify-between border-b p-6"><div><h2 id="assign-title" className="text-xl font-bold">Asignar cirugía</h2><p className="mt-1 text-sm text-muted-foreground">{assigning.paciente} · {assigning.intervencion}</p></div><button type="button" onClick={() => setAssigning(null)} aria-label="Cerrar" className="rounded-lg p-2 hover:bg-muted"><X /></button></div><div className="grid grid-cols-2 gap-4 p-6"><label className="text-sm font-medium">Fecha *<input type="date" value={assignment.date} onChange={(event) => setAssignment((current) => ({ ...current, date: event.target.value }))} className="mt-2 w-full rounded-lg border bg-background p-2.5" /></label><label className="text-sm font-medium">Hora *<input type="time" value={assignment.time} onChange={(event) => setAssignment((current) => ({ ...current, time: event.target.value }))} className="mt-2 w-full rounded-lg border bg-background p-2.5" /></label><label className="col-span-2 text-sm font-medium">Quirófano *<select value={assignment.roomId} onChange={(event) => setAssignment((current) => ({ ...current, roomId: event.target.value }))} className="mt-2 w-full rounded-lg border bg-background p-2.5"><option value="">Seleccione un quirófano</option>{mockQuirofanos.filter((room) => room.disponible).map((room) => <option key={room.id} value={room.id}>{room.nombre} · piso {room.piso}</option>)}</select></label><p className="col-span-2 text-xs text-muted-foreground">Esta asignación es simulada y se restablece al recargar.</p></div><div className="flex justify-end gap-3 border-t p-5"><button type="button" onClick={() => setAssigning(null)} className="rounded-lg bg-muted px-4 py-2">Cancelar</button><button type="button" disabled={!assignment.date || !assignment.time || !assignment.roomId} onClick={saveAssignment} className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-50">Confirmar asignación</button></div></div></div>}
+  </div>
 }

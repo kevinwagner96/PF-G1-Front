@@ -14,6 +14,10 @@ import {
 import Sidebar from '@/components/sidebar'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
+import FeedbackMessage from '@/components/feedback-message'
+import PageHeader from '@/components/page-header'
+import StatusBadge from '@/components/status-badge'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface MetricValue {
   value: number
@@ -98,6 +102,7 @@ export default function MvpReportesPage() {
   const [report, setReport] = useState<ReportsSummaryResponse | null>(null)
   const [isFetching, setIsFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isDateRangeInvalid = Boolean(dateFrom && dateTo && dateFrom > dateTo)
 
   useEffect(() => {
     if (!isLoading) {
@@ -110,6 +115,7 @@ export default function MvpReportesPage() {
   }, [isAuthenticated, isLoading, requiresPasswordChange, router])
 
   const fetchReport = async () => {
+    if (isDateRangeInvalid) return
     setIsFetching(true)
     setError(null)
     try {
@@ -169,19 +175,17 @@ export default function MvpReportesPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-auto">
           <div className="p-6 md:p-8">
-            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold text-foreground">Reportes</h1>
-                <p className="mt-1 text-muted-foreground">
-                  Indicadores clave de gestión quirúrgica en tiempo real.
-                </p>
-              </div>
-              {report && (
+            <PageHeader
+              className="mb-6"
+              eyebrow="MVP · Datos reales"
+              title="Reportes"
+              description="Indicadores clave de gestión quirúrgica calculados en tiempo real para el período seleccionado."
+              actions={report && (
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
                   Generado: {formatDateTime(report.generated_at)}
                 </div>
               )}
-            </div>
+            />
 
             <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
@@ -205,26 +209,38 @@ export default function MvpReportesPage() {
               <button
                 type="button"
                 onClick={fetchReport}
-                disabled={isFetching}
+                disabled={isFetching || isDateRangeInvalid}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
                 <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
                 {isFetching ? 'Actualizando...' : 'Actualizar'}
               </button>
+              {report && (
+                <p className="ml-auto text-xs text-slate-500">
+                  Período mostrado: {new Intl.DateTimeFormat('es-AR').format(new Date(`${report.range.date_from}T12:00:00`))} al {new Intl.DateTimeFormat('es-AR').format(new Date(`${report.range.date_to}T12:00:00`))}
+                </p>
+              )}
             </div>
 
+            {isDateRangeInvalid && (
+              <FeedbackMessage className="mb-6" tone="error" title="Rango de fechas inválido">
+                La fecha “Desde” debe ser anterior o igual a la fecha “Hasta”.
+              </FeedbackMessage>
+            )}
+
             {error && (
-              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </div>
+              <FeedbackMessage className="mb-6" tone="error" title="No se pudieron actualizar los reportes">
+                <div className="flex flex-wrap items-center gap-3"><span>{error}</span><button type="button" onClick={fetchReport} className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-red-50">Reintentar</button></div>
+              </FeedbackMessage>
             )}
 
             {isFetching && !report ? (
-              <div className="flex min-h-64 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500">
-                Cargando indicadores...
+              <div className="space-y-6" aria-label="Cargando indicadores">
+                <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="rounded-lg border border-slate-200 bg-white p-5"><Skeleton className="h-4 w-36" /><Skeleton className="mt-4 h-9 w-24" /><Skeleton className="mt-4 h-3 w-52" /></div>)}</div>
+                <div className="grid gap-6 xl:grid-cols-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-56 rounded-lg" />)}</div>
               </div>
             ) : report ? (
-              <div className="space-y-6">
+              <div className={`space-y-6 transition-opacity ${isFetching ? 'opacity-60' : 'opacity-100'}`} aria-busy={isFetching}>
                 <div className="grid gap-4 md:grid-cols-3">
                   {metricCards.map((card) => (
                     <div key={card.title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -294,7 +310,7 @@ export default function MvpReportesPage() {
                         <tbody className="divide-y divide-slate-100">
                           {report.details.statuses.length > 0 ? report.details.statuses.map((status) => (
                             <tr key={status.estado}>
-                              <td className="px-4 py-3 font-medium text-slate-900">{status.estado}</td>
+                              <td className="px-4 py-3 font-medium text-slate-900"><StatusBadge kind="surgery" status={status.estado} /></td>
                               <td className="px-4 py-3 text-slate-600">{status.count}</td>
                             </tr>
                           )) : (

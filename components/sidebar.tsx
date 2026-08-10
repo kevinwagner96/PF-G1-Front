@@ -24,6 +24,9 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { apiRequest } from '@/lib/api'
+import ConfirmActionDialog from '@/components/confirm-action-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { toast } from '@/hooks/use-toast'
 
 const ACCESS_SYSTEM_ADMIN_PERMISSION = 'accounts.can_access_system_admin'
 const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? 'http://127.0.0.1:3010/admin/'
@@ -40,33 +43,32 @@ const menuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, href: '/dashboard' },
   {
     id: 'cirugias',
-    label: 'Cirugias',
+    label: 'Cirugías',
     icon: <Calendar size={20} />,
     submenu: [
-      { id: 'lista-cirugias', label: 'Lista de Cirugias', icon: <ClipboardList size={18} />, href: '/cirugias' },
+      { id: 'lista-cirugias', label: 'Lista de cirugías', icon: <ClipboardList size={18} />, href: '/cirugias' },
       { id: 'agenda', label: 'Agenda Semanal', icon: <Calendar size={18} />, href: '/agenda' },
       { id: 'urgencias', label: 'Emergencias', icon: <AlertCircle size={18} />, href: '/emergencias' },
     ],
   },
   { id: 'mi-agenda', label: 'Mi Agenda', icon: <UserCircle size={20} />, href: '/mi-agenda' },
-  { id: 'quirofanos', label: 'Quirofanos', icon: <Stethoscope size={20} />, href: '/quirofanos' },
+  { id: 'quirofanos', label: 'Quirófanos', icon: <Stethoscope size={20} />, href: '/quirofanos' },
   { id: 'personal', label: 'Personal', icon: <Users size={20} />, href: '/personal' },
   { id: 'usuarios', label: 'Usuarios', icon: <ShieldCheck size={20} />, href: '/usuarios' },
   { id: 'insumos', label: 'Insumos', icon: <Package size={20} />, href: '/insumos' },
   { id: 'pacientes', label: 'Pacientes', icon: <UserCog size={20} />, href: '/pacientes' },
-  { id: 'tipos-cirugia', label: 'Tipos de Cirugia', icon: <FileText size={20} />, href: '/tipos-cirugia' },
-  { id: 'reportes', label: 'Reportes', icon: <FileText size={20} />, href: '/reportes' },
+  { id: 'tipos-cirugia', label: 'Tipos de cirugía', icon: <FileText size={20} />, href: '/tipos-cirugia' },
 ]
 
 const mvpMenuItems: MenuItem[] = [
   {
     id: 'cirugias',
-    label: 'Cirugias',
+    label: 'Cirugías',
     icon: <Calendar size={20} />,
     submenu: [
       {
         id: 'lista-cirugias',
-        label: 'Lista de Cirugias',
+        label: 'Lista de cirugías',
         icon: <ClipboardList size={18} />,
         href: '/mvp/cirugias',
       },
@@ -90,6 +92,7 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   const { user, logout } = useAuth()
   const [expanded, setExpanded] = useState<string | null>('cirugias')
   const [isResettingDemo, setIsResettingDemo] = useState(false)
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false)
   const visibleMenuItems = navigationMode === 'mvp' ? mvpMenuItems : menuItems
   const canAccessSystemAdmin = user?.permissions?.includes(ACCESS_SYSTEM_ADMIN_PERMISSION) ?? false
 
@@ -99,16 +102,15 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   }
 
   const handleResetDemo = async () => {
-    const confirmed = window.confirm('Esto va a borrar la planificación actual y devolver las cirugías al estado pendiente. ¿Continuar?')
-    if (!confirmed) return
-
     setIsResettingDemo(true)
     try {
       await apiRequest('/demo/reset/', { method: 'POST' })
+      toast({ title: 'Demo restablecida', description: 'Las planificaciones se eliminaron y las cirugías volvieron a Pendiente.' })
+      setIsResetDialogOpen(false)
       window.location.reload()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo restablecer la demo'
-      window.alert(message)
+      toast({ title: 'No se pudo restablecer la demo', description: message, variant: 'destructive' })
       setIsResettingDemo(false)
     }
   }
@@ -128,12 +130,15 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   }
 
   return (
-    <div className="w-64 shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen">
+    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-gray-200 bg-white" aria-label="Navegación principal">
       <div className="p-6 border-b border-gray-200">
         <h2 className="text-xl font-bold text-blue-900 flex items-center gap-2">
           <Stethoscope size={24} className="text-blue-600" />
           <span>SurgiCare</span>
         </h2>
+        <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${navigationMode === 'mvp' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+          {navigationMode === 'mvp' ? 'MVP · datos reales' : 'Mockup · simulación'}
+        </span>
       </div>
 
       <nav className="flex-1 overflow-y-auto p-4">
@@ -143,6 +148,9 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
             return (
               <li key={item.id}>
                 <button
+                  type="button"
+                  aria-expanded={item.submenu ? expanded === item.id : undefined}
+                  aria-current={!item.submenu && active ? 'page' : undefined}
                   onClick={() => {
                     if (item.submenu) {
                       setExpanded(expanded === item.id ? null : item.id)
@@ -172,6 +180,8 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
                     {item.submenu.map((subitem) => (
                       <li key={subitem.id}>
                         <button 
+                          type="button"
+                          aria-current={activePage === subitem.id ? 'page' : undefined}
                           onClick={() => handleNavigation(subitem.href)}
                           className={`w-full flex items-center gap-2 px-4 py-2 text-sm transition-colors rounded-lg ${
                             activePage === subitem.id 
@@ -206,7 +216,7 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
         {navigationMode === 'mvp' && (
           <button
             type="button"
-            onClick={handleResetDemo}
+            onClick={() => setIsResetDialogOpen(true)}
             disabled={isResettingDemo}
             className="mb-3 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-700 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:text-red-300"
           >
@@ -234,16 +244,32 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
             <p className="font-medium text-gray-900 truncate">{user?.nombre || 'Usuario'}</p>
             <p className="text-xs text-gray-500 truncate">{user?.rol || 'Sin rol'}</p>
           </div>
-          <button 
-            onClick={handleLogout}
-            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-            title="Cerrar sesion"
-          >
-            <LogOut size={16} className="text-gray-400 hover:text-red-600" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-200 hover:text-red-600"
+                aria-label="Cerrar sesión"
+              >
+                <LogOut size={16} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Cerrar sesión</TooltipContent>
+          </Tooltip>
         </div>
       </div>
-    </div>
+      <ConfirmActionDialog
+        open={isResetDialogOpen}
+        onOpenChange={setIsResetDialogOpen}
+        title="Restablecer datos de la demo"
+        description="Se eliminará la planificación actual y todas las cirugías demo volverán al estado Pendiente. Esta acción no se puede deshacer."
+        confirmLabel="Restablecer demo"
+        busyLabel="Restableciendo..."
+        busy={isResettingDemo}
+        onConfirm={handleResetDemo}
+      />
+    </aside>
   )
 }
 

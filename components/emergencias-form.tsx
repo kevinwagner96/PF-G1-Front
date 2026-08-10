@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { AlertTriangle, Clock, User, Stethoscope, Activity, ChevronRight, Plus, X, CheckCircle2 } from 'lucide-react'
-import { mockQuirofanos, mockPersonal, mockTiposCirugia, mockPacientes, Cirugia, getCirugiasHoy } from '@/lib/mock-data'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, Clock, User, Stethoscope, Activity, ChevronRight, CheckCircle2 } from 'lucide-react'
+import { mockQuirofanos, mockPersonal, mockTiposCirugia, mockPacientes, getCirugiasHoy } from '@/lib/mock-data'
 
 const prioridades = ['Alta', 'Emergencia'] as const
 const tiposAnestesia = ['General', 'Regional', 'Local', 'Sedación']
 
 export default function EmergenciasForm() {
+  const router = useRouter()
   const [step, setStep] = useState(1)
   const [showSuccess, setShowSuccess] = useState(false)
   const [formData, setFormData] = useState({
@@ -52,9 +54,6 @@ export default function EmergenciasForm() {
   // Paciente seleccionado
   const pacienteSeleccionado = mockPacientes.find(p => p.id === formData.pacienteId)
 
-  // Tipo de cirugía seleccionado
-  const tipoCirugiaSeleccionado = tiposCirugia.find(t => t.id === formData.tipoCirugiaId)
-
   // Quirófano seleccionado
   const quirofanoSeleccionado = mockQuirofanos.find(q => q.id === formData.quirofanoId)
 
@@ -73,32 +72,17 @@ export default function EmergenciasForm() {
   }
 
   const handleSubmit = () => {
-    // Simular guardado
-    console.log('Emergencia registrada:', formData)
     setShowSuccess(true)
-    setTimeout(() => {
-      setShowSuccess(false)
-      // Reset form
-      setStep(1)
-      setFormData({
-        pacienteExistente: true,
-        pacienteId: '',
-        nombrePaciente: '',
-        dniPaciente: '',
-        edadPaciente: '',
-        obraSocial: '',
-        tipoCirugiaId: '',
-        intervencion: '',
-        especialidad: '',
-        prioridad: 'Emergencia',
-        diagnostico: '',
-        quirofanoId: '',
-        cirujanoId: '',
-        anestesistaId: '',
-        anestesia: 'General',
-        observaciones: '',
-      })
-    }, 3000)
+  }
+
+  const resetForm = () => {
+    setShowSuccess(false)
+    setStep(1)
+    setFormData({
+      pacienteExistente: true, pacienteId: '', nombrePaciente: '', dniPaciente: '', edadPaciente: '', obraSocial: '',
+      tipoCirugiaId: '', intervencion: '', especialidad: '', prioridad: 'Emergencia', diagnostico: '',
+      quirofanoId: '', cirujanoId: '', anestesistaId: '', anestesia: 'General', observaciones: '',
+    })
   }
 
   const isStep1Valid = formData.pacienteExistente 
@@ -126,8 +110,8 @@ export default function EmergenciasForm() {
           <AlertTriangle className="text-red-600" size={28} />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Registro de Emergencia</h1>
-          <p className="text-muted-foreground mt-1">Formulario rápido para cirugías de emergencia</p>
+          <h1 className="text-3xl font-bold text-foreground">Registro de emergencia</h1>
+          <p className="text-muted-foreground mt-1">Asistente simulado: no envía notificaciones ni bloquea recursos reales.</p>
         </div>
       </div>
 
@@ -285,7 +269,7 @@ export default function EmergenciasForm() {
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Obra Social
+                Obra social
                   </label>
                   <input
                     type="text"
@@ -605,7 +589,7 @@ export default function EmergenciasForm() {
             <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <Clock className="text-yellow-600" size={20} />
               <span className="text-yellow-800 text-sm">
-                Al confirmar, se notificará automáticamente al equipo médico y se bloqueará el quirófano seleccionado.
+                En esta simulación, el registro, las notificaciones al equipo y el bloqueo del quirófano no se ejecutan en sistemas reales.
               </span>
             </div>
           </div>
@@ -613,6 +597,13 @@ export default function EmergenciasForm() {
       </div>
 
       {/* Navigation Buttons */}
+      {!canProceed() && step < 4 && (
+        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {step === 1 && 'Seleccione un paciente existente o complete nombre y DNI para continuar.'}
+          {step === 2 && 'Complete la intervención y la especialidad para continuar.'}
+          {step === 3 && 'Seleccione un quirófano disponible y un cirujano para continuar.'}
+        </p>
+      )}
       <div className="flex justify-between">
         <button
           type="button"
@@ -637,7 +628,7 @@ export default function EmergenciasForm() {
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-8 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 font-bold flex items-center gap-2 animate-pulse"
+            className="px-8 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 font-bold flex items-center gap-2"
           >
             <AlertTriangle size={20} />
             CONFIRMAR EMERGENCIA
@@ -648,16 +639,17 @@ export default function EmergenciasForm() {
       {/* Success Modal */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-card rounded-xl shadow-2xl p-8 max-w-md mx-4 text-center">
+          <div role="dialog" aria-modal="true" aria-labelledby="emergency-success-title" className="bg-card rounded-xl shadow-2xl p-8 max-w-md mx-4 text-center">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="text-green-600" size={40} />
             </div>
-            <h3 className="text-2xl font-bold text-foreground mb-2">Emergencia Registrada</h3>
+            <h3 id="emergency-success-title" className="text-2xl font-bold text-foreground mb-2">Emergencia simulada registrada</h3>
             <p className="text-muted-foreground mb-4">
-              Se ha notificado al equipo médico y el quirófano ha sido reservado.
+              El resumen quedó confirmado durante esta sesión. No se enviaron notificaciones ni se reservó un quirófano real.
             </p>
-            <div className="text-sm text-muted-foreground">
-              Redirigiendo en unos segundos...
+            <div className="mt-6 flex flex-col gap-2">
+              <button type="button" onClick={resetForm} className="rounded-lg bg-red-600 px-4 py-2.5 font-medium text-white">Registrar otra emergencia</button>
+              <button type="button" onClick={() => router.push('/cirugias')} className="rounded-lg bg-muted px-4 py-2.5 font-medium text-foreground">Volver a cirugías</button>
             </div>
           </div>
         </div>

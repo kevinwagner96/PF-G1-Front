@@ -1,21 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { X, Search, Plus, Trash2 } from 'lucide-react'
 import { 
   mockPacientes, 
-  mockPersonal, 
-  mockTiposCirugia,
   mockInsumos,
   getCirujanos,
   getAnestesistas,
   getInstrumentadores,
   getAyudantes,
   getTiposCirugiaActivos,
-  Paciente
+  type Paciente,
 } from '@/lib/mock-data'
 
-interface FormData {
+export interface ProgramarFormData {
   // Paciente
   pacienteId: string
   pacienteDni: string
@@ -38,16 +36,18 @@ interface FormData {
 
 interface ProgramarModalProps {
   onClose: () => void
-  onSave?: (data: FormData) => void
+  onSave?: (data: ProgramarFormData) => void
+  initialPatientId?: string
 }
 
-export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps) {
-  const [formData, setFormData] = useState<FormData>({
-    pacienteId: '',
-    pacienteDni: '',
-    pacienteNombre: '',
-    pacienteEdad: null,
-    pacienteObraSocial: '',
+export default function ProgramarModal({ onClose, onSave, initialPatientId }: ProgramarModalProps) {
+  const initialPatient = mockPacientes.find((patient) => patient.id === initialPatientId)
+  const [formData, setFormData] = useState<ProgramarFormData>({
+    pacienteId: initialPatient?.id ?? '',
+    pacienteDni: initialPatient?.dni ?? '',
+    pacienteNombre: initialPatient?.nombre ?? '',
+    pacienteEdad: initialPatient?.edad ?? null,
+    pacienteObraSocial: initialPatient?.obraSocial ?? '',
     cirujanoId: '',
     intervenciones: [],
     prioridad: 'Media',
@@ -58,9 +58,8 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
     observaciones: '',
   })
 
-  const [dniSearch, setDniSearch] = useState('')
+  const [dniSearch, setDniSearch] = useState(initialPatient?.dni ?? '')
   const [showPacienteResults, setShowPacienteResults] = useState(false)
-  const [filteredPacientes, setFilteredPacientes] = useState<Paciente[]>([])
   const [insumoSearch, setInsumoSearch] = useState('')
   const [insumoQuantity, setInsumoQuantity] = useState(1)
 
@@ -70,19 +69,9 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
   const ayudantes = getAyudantes()
   const tiposCirugia = getTiposCirugiaActivos()
 
-  // Buscar paciente por DNI
-  useEffect(() => {
-    if (dniSearch.length >= 2) {
-      const filtered = mockPacientes.filter(p => 
-        p.dni.includes(dniSearch) || p.nombre.toLowerCase().includes(dniSearch.toLowerCase())
-      )
-      setFilteredPacientes(filtered)
-      setShowPacienteResults(true)
-    } else {
-      setFilteredPacientes([])
-      setShowPacienteResults(false)
-    }
-  }, [dniSearch])
+  const filteredPacientes = dniSearch.length >= 2
+    ? mockPacientes.filter((patient) => patient.dni.includes(dniSearch) || patient.nombre.toLowerCase().includes(dniSearch.toLowerCase()))
+    : []
 
   const handleSelectPaciente = (paciente: Paciente) => {
     setFormData(prev => ({
@@ -138,45 +127,45 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Turno programado:', formData)
     onSave?.(formData)
     onClose()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-card rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto mx-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-labelledby="programar-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-card shadow-2xl">
         {/* Header */}
         <div className="sticky top-0 flex items-center justify-between p-6 border-b border-border bg-card z-10">
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Crear Turno</h2>
-            <p className="text-sm text-muted-foreground mt-1">Complete los datos para programar una cirugia</p>
+            <h2 id="programar-title" className="text-2xl font-bold text-foreground">Nueva solicitud quirúrgica</h2>
+            <p className="text-sm text-muted-foreground mt-1">Complete los datos clínicos. La fecha y el quirófano se asignan durante la planificación.</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onClose} aria-label="Cerrar formulario" className="p-2 hover:bg-muted rounded-lg transition-colors text-muted-foreground hover:text-foreground">
             <X size={24} />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-8">
+        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-8">
           {/* Seccion Paciente */}
           <section>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">1</span>
-              Datos del Paciente
+              Datos del paciente
             </h3>
             <div className="space-y-4">
               {/* Busqueda por DNI */}
               <div className="relative">
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Buscar por DNI o Nombre *
+                <label htmlFor="patient-search" className="block text-sm font-medium text-foreground mb-2">
+                  Buscar por DNI o nombre *
                 </label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                   <input
+                    id="patient-search"
                     type="text"
                     value={dniSearch}
-                    onChange={(e) => setDniSearch(e.target.value)}
+                    onChange={(e) => { setDniSearch(e.target.value); setShowPacienteResults(e.target.value.length >= 2) }}
                     placeholder="Ingrese DNI o nombre del paciente"
                     className="w-full pl-10 pr-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -200,6 +189,9 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
                     ))}
                   </div>
                 )}
+                {showPacienteResults && filteredPacientes.length === 0 && (
+                  <p role="status" className="mt-2 text-sm text-muted-foreground">No se encontraron pacientes con esa búsqueda.</p>
+                )}
               </div>
 
               {/* Datos readonly del paciente */}
@@ -218,7 +210,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
                     <p className="text-foreground">{formData.pacienteEdad} anos</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Obra Social</label>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Obra social</label>
                     <p className="text-foreground">{formData.pacienteObraSocial}</p>
                   </div>
                 </div>
@@ -230,13 +222,14 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
           <section>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">2</span>
-              Informacion Medica
+              Información médica
             </h3>
             <div className="space-y-4">
               {/* Cirujano */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Cirujano Principal *</label>
+                <label htmlFor="main-surgeon" className="block text-sm font-medium text-foreground mb-2">Cirujano principal *</label>
                 <select
+                  id="main-surgeon"
                   value={formData.cirujanoId}
                   onChange={(e) => setFormData(prev => ({ ...prev, cirujanoId: e.target.value }))}
                   required
@@ -250,8 +243,8 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
               </div>
 
               {/* Intervenciones (multiselect) */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Intervenciones *</label>
+              <fieldset>
+                <legend className="block text-sm font-medium text-foreground mb-2">Intervenciones *</legend>
                 <div className="border border-input rounded-lg p-3 max-h-40 overflow-y-auto space-y-2">
                   {tiposCirugia.map(tipo => (
                     <label key={tipo.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
@@ -271,7 +264,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
                     {formData.intervenciones.length} seleccionada(s)
                   </p>
                 )}
-              </div>
+              </fieldset>
 
               {/* Prioridad */}
               <div>
@@ -303,13 +296,14 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
           <section>
             <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">3</span>
-              Equipo Medico
+              Equipo médico
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Anestesista */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Anestesista</label>
+                <label htmlFor="anesthetist" className="block text-sm font-medium text-foreground mb-2">Anestesista</label>
                 <select
+                  id="anesthetist"
                   value={formData.anestesistaId}
                   onChange={(e) => setFormData(prev => ({ ...prev, anestesistaId: e.target.value }))}
                   className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -323,8 +317,9 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
 
               {/* Instrumentador */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Instrumentador</label>
+                <label htmlFor="instrumenter" className="block text-sm font-medium text-foreground mb-2">Instrumentador</label>
                 <select
+                  id="instrumenter"
                   value={formData.instrumentadorId}
                   onChange={(e) => setFormData(prev => ({ ...prev, instrumentadorId: e.target.value }))}
                   className="w-full px-4 py-3 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -370,6 +365,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
               <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <input
+                    id="supply-search"
                     type="text"
                     value={insumoSearch}
                     onChange={(e) => setInsumoSearch(e.target.value)}
@@ -384,6 +380,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
                   </datalist>
                 </div>
                 <input
+                  aria-label="Cantidad de insumo"
                   type="number"
                   min="1"
                   value={insumoQuantity}
@@ -395,7 +392,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
                   onClick={handleAddInsumo}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  <Plus size={20} />
+                  <Plus size={20} aria-hidden="true" />
                 </button>
               </div>
 
@@ -410,6 +407,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
                         <button
                           type="button"
                           onClick={() => handleRemoveInsumo(insumo.insumoId)}
+                          aria-label={`Quitar ${insumo.nombre}`}
                           className="text-red-500 hover:text-red-600"
                         >
                           <Trash2 size={18} />
@@ -429,6 +427,8 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
               Observaciones
             </h3>
             <textarea
+              id="mock-surgery-observations"
+              aria-label="Observaciones"
               value={formData.observaciones}
               onChange={(e) => setFormData(prev => ({ ...prev, observaciones: e.target.value }))}
               placeholder="Notas adicionales, alergias, consideraciones especiales..."
@@ -451,7 +451,7 @@ export default function ProgramarModal({ onClose, onSave }: ProgramarModalProps)
               disabled={!formData.pacienteId || !formData.cirujanoId || formData.intervenciones.length === 0}
               className="px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium transition-colors"
             >
-              Crear Turno
+              Crear solicitud
             </button>
           </div>
         </form>

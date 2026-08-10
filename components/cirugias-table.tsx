@@ -1,405 +1,162 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { AlertCircle, Eye, Trash2, Edit2, Search, X, Plus, Sparkles, ListFilter } from 'lucide-react'
-import ViewCirugia from './view-cirugia-modal'
+import { useMemo, useState } from 'react'
+import { Edit2, Eye, ListFilter, Plus, Search, Sparkles, Trash2, X } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
+import { Cirugia, getCirujanos, mockCirugias, mockPersonal, mockQuirofanos, mockTiposCirugia } from '@/lib/mock-data'
+import ConfirmActionDialog from './confirm-action-dialog'
 import EditCirugia from './edit-cirugia-modal'
-import ProgramarModal from './programar-modal'
-import WeeklyPlanningModal from './weekly-planning-modal'
+import EmptyState from './empty-state'
+import PageHeader from './page-header'
+import ProgramarModal, { ProgramarFormData } from './programar-modal'
 import SurgeryStatusBadge from './surgery-status-badge'
-import { mockCirugias as initialCirugias, mockQuirofanos, getCirujanos, Cirugia } from '@/lib/mock-data'
+import ViewCirugia from './view-cirugia-modal'
+import WeeklyPlanningModal from './weekly-planning-modal'
 
-const formatDateTime = (cirugia: Cirugia) => {
-  if (!cirugia.fecha || !cirugia.hora) return 'Sin programar'
+type Filters = {
+  search: string
+  estado: string
+  quirofano: string
+  fechaDesde: string
+  fechaHasta: string
+  cirujano: string
+}
 
-  return new Intl.DateTimeFormat('es-AR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(`${cirugia.fecha}T${cirugia.hora}`))
+const emptyFilters: Filters = { search: '', estado: '', quirofano: '', fechaDesde: '', fechaHasta: '', cirujano: '' }
+const statuses = ['Pendiente', 'Programada', 'En Curso', 'Completada', 'Cancelada'] as const
+
+function formatDateTime(surgery: Cirugia) {
+  if (!surgery.fecha || !surgery.hora) return 'Sin programar'
+  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(`${surgery.fecha}T${surgery.hora}`))
+}
+
+function getDuration(surgery: Cirugia) {
+  if (surgery.hora && surgery.horaFin) {
+    const [startHour, startMinute] = surgery.hora.split(':').map(Number)
+    const [endHour, endMinute] = surgery.horaFin.split(':').map(Number)
+    return `${endHour * 60 + endMinute - startHour * 60 - startMinute} min`
+  }
+  const procedure = mockTiposCirugia.find((item) => item.nombre === surgery.intervencion)
+  return procedure ? `${procedure.duracionEstimada} min` : 'Sin definir'
 }
 
 export default function CirugiasTable() {
-  const [cirugias, setCirugias] = useState<Cirugia[]>(initialCirugias)
-  const [selectedCirugia, setSelectedCirugia] = useState<Cirugia | null>(null)
-  const [viewMode, setViewMode] = useState<'view' | 'edit' | null>(null)
-  const [cancelSurgeryId, setCancelSurgeryId] = useState<string | null>(null)
+  const [surgeries, setSurgeries] = useState<Cirugia[]>(() => [...mockCirugias])
+  const [filters, setFilters] = useState<Filters>(emptyFilters)
   const [showFilters, setShowFilters] = useState(false)
-  const [showProgramarModal, setShowProgramarModal] = useState(false)
-  const [showWeeklyPlanning, setShowWeeklyPlanning] = useState(false)
+  const [selected, setSelected] = useState<Cirugia | null>(null)
+  const [mode, setMode] = useState<'view' | 'edit' | null>(null)
+  const [cancelId, setCancelId] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [showPlanning, setShowPlanning] = useState(false)
+  const [planningDecision, setPlanningDecision] = useState<'approved' | 'rejected' | null>(null)
+  const surgeons = getCirujanos()
 
-  // Filtros
-  const [filters, setFilters] = useState({
-    estado: '',
-    quirofano: '',
-    fechaDesde: '',
-    fechaHasta: '',
-    dniPaciente: '',
-    cirujano: '',
-  })
+  const activeFiltersCount = [filters.estado, filters.quirofano, filters.fechaDesde, filters.fechaHasta, filters.cirujano].filter(Boolean).length
+  const filtered = useMemo(() => surgeries.filter((surgery) => {
+    const query = filters.search.trim().toLocaleLowerCase('es')
+    if (query && !`${surgery.paciente} ${surgery.dni}`.toLocaleLowerCase('es').includes(query)) return false
+    if (filters.estado && surgery.estado !== filters.estado) return false
+    if (filters.quirofano && surgery.quirofanoId !== filters.quirofano) return false
+    if (filters.fechaDesde && surgery.fecha && surgery.fecha < filters.fechaDesde) return false
+    if (filters.fechaHasta && surgery.fecha && surgery.fecha > filters.fechaHasta) return false
+    if (filters.cirujano && surgery.cirujanoId !== filters.cirujano) return false
+    return true
+  }), [filters, surgeries])
 
-  const cirujanos = getCirujanos()
-
-  const filteredCirugias = useMemo(() => {
-    return cirugias.filter(c => {
-      if (filters.estado && c.estado !== filters.estado) return false
-      if (filters.quirofano && c.quirofanoId !== filters.quirofano) return false
-      if (filters.fechaDesde && c.fecha && c.fecha < filters.fechaDesde) return false
-      if (filters.fechaHasta && c.fecha && c.fecha > filters.fechaHasta) return false
-      if (filters.dniPaciente && !c.dni.includes(filters.dniPaciente)) return false
-      if (filters.cirujano && c.cirujanoId !== filters.cirujano) return false
-      return true
-    })
-  }, [cirugias, filters])
-
-  const activeFiltersCount = Object.values(filters).filter(v => v !== '').length
-
-  const clearFilters = () => {
-    setFilters({
-      estado: '',
-      quirofano: '',
-      fechaDesde: '',
-      fechaHasta: '',
-      dniPaciente: '',
-      cirujano: '',
-    })
+  const saveNew = (data: ProgramarFormData) => {
+    const surgeon = mockPersonal.find((item) => item.id === data.cirujanoId)
+    const anesthetist = mockPersonal.find((item) => item.id === data.anestesistaId)
+    const instrumenter = mockPersonal.find((item) => item.id === data.instrumentadorId)
+    const procedures = data.intervenciones.map((id) => mockTiposCirugia.find((item) => item.id === id)).filter(Boolean)
+    const mainProcedure = procedures[0]
+    const surgery: Cirugia = {
+      id: `mock-surgery-${Date.now()}`,
+      fecha: '', hora: '', pacienteId: data.pacienteId, paciente: data.pacienteNombre, dni: data.pacienteDni,
+      prioridad: data.prioridad, servicio: mainProcedure?.especialidad ?? 'Sin definir', quirofanoId: '', quirofano: '',
+      especialidad: mainProcedure?.especialidad ?? 'Sin definir', intervencion: procedures.map((item) => item?.nombre).join(', '),
+      anestesia: 'Sin definir', cirujanoId: data.cirujanoId, cirujano: surgeon?.nombre ?? 'Sin asignar',
+      anestesistaId: data.anestesistaId || undefined, anestesista: anesthetist?.nombre,
+      instrumentadorId: data.instrumentadorId || undefined, instrumentador: instrumenter?.nombre,
+      ayudantes: data.ayudantes.map((id) => mockPersonal.find((item) => item.id === id)?.nombre).filter((name): name is string => Boolean(name)),
+      estado: 'Pendiente', insumos: data.insumos.map(({ nombre, cantidad }) => ({ nombre, cantidad })), observaciones: data.observaciones,
+    }
+    setSurgeries((current) => [surgery, ...current])
+    toast({ title: 'Solicitud creada', description: 'Se agregó como Pendiente a esta sesión simulada.' })
   }
 
-  const canCancel = (estado: string) => {
-    return estado === 'Programada' || estado === 'Pendiente'
+  const saveEdit = (updated: Cirugia) => {
+    setSurgeries((current) => current.map((item) => item.id === updated.id ? updated : item))
+    setMode(null)
+    setSelected(null)
+    toast({ title: 'Cirugía actualizada', description: 'Los cambios se conservarán hasta recargar la página.' })
   }
 
-  const handleCancel = (cirugia: Cirugia) => {
-    setCirugias(cirugias.map((item) => (
-      item.id === cirugia.id ? { ...item, estado: 'Cancelada' } : item
-    )))
-    setCancelSurgeryId(null)
+  const cancel = () => {
+    if (!cancelId) return
+    setSurgeries((current) => current.map((item) => item.id === cancelId ? { ...item, estado: 'Cancelada' } : item))
+    setCancelId(null)
+    toast({ title: 'Cirugía cancelada', description: 'Permanece visible con estado Cancelada.' })
   }
 
-  const handleSaveEdit = (updatedCirugia: Cirugia) => {
-    setCirugias(cirugias.map((c) => (c.id === updatedCirugia.id ? updatedCirugia : c)))
-    setViewMode(null)
-    setSelectedCirugia(null)
+  const approvePlanning = () => {
+    const assignments = [
+      { id: 'c11', fecha: '2026-08-17', hora: '08:00', horaFin: '09:30', quirofanoId: 'qf2', quirofano: 'Quirófano B' },
+      { id: 'c12', fecha: '2026-08-18', hora: '09:30', horaFin: '10:15', quirofanoId: 'qf1', quirofano: 'Quirófano A' },
+      { id: 'c13', fecha: '2026-08-19', hora: '11:00', horaFin: '12:00', quirofanoId: 'qf3', quirofano: 'Quirófano C' },
+    ]
+    setSurgeries((current) => current.map((surgery) => {
+      const assignment = assignments.find((item) => item.id === surgery.id)
+      return assignment ? { ...surgery, ...assignment, estado: 'Programada' as const } : surgery
+    }))
+    setPlanningDecision('approved')
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Lista de Cirugias</h1>
-          <p className="text-sm text-muted-foreground mt-1">Gestione y programe cirugias en tiempo real</p>
+    <div className="space-y-5">
+      <PageHeader eyebrow="Mockup" title="Cirugías" description="Cree, revise y programe solicitudes con datos simulados durante esta sesión." actions={<><button type="button" onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"><Plus size={17} />Nueva cirugía</button><button type="button" onClick={() => setShowPlanning(true)} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-card px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"><Sparkles size={17} />{planningDecision ? 'Ver planificación' : 'Generar planificación'}</button></>} />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[320px] flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} aria-hidden="true" />
+          <label htmlFor="surgery-search" className="sr-only">Buscar por paciente o DNI</label>
+          <input id="surgery-search" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar por paciente o DNI..." className="w-full rounded-lg border bg-background py-2.5 pl-10 pr-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setShowProgramarModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-          >
-            <Plus size={16} />
-            Nueva cirugía
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowWeeklyPlanning(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
-          >
-            <Sparkles size={16} />
-            Generar planificación
-          </button>
-        </div>
+        <button type="button" onClick={() => setShowFilters((value) => !value)} aria-expanded={showFilters} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium ${showFilters || activeFiltersCount ? 'bg-blue-100 text-blue-700' : 'bg-muted'}`}><ListFilter size={17} />Más filtros{activeFiltersCount > 0 && <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">{activeFiltersCount}</span>}</button>
+        {(filters.search || activeFiltersCount > 0) && <button type="button" onClick={() => setFilters(emptyFilters)} className="inline-flex items-center gap-1 text-sm text-blue-700"><X size={15} />Limpiar</button>}
       </div>
 
-      {/* Filtros Toggle */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-            showFilters || activeFiltersCount > 0 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-muted text-foreground hover:bg-muted/80'
-          }`}
-        >
-          <ListFilter size={18} />
-          Filtros
-          {activeFiltersCount > 0 && (
-            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-blue-600 text-white">
-              {activeFiltersCount}
-            </span>
-          )}
-        </button>
-        {activeFiltersCount > 0 && (
-          <button
-            onClick={clearFilters}
-            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-          >
-            <X size={14} />
-            Limpiar filtros
-          </button>
-        )}
-        {/* Status quick filters */}
-        <div className="flex gap-2 ml-auto">
-          {['Pendiente', 'Programada', 'En Curso', 'Completada', 'Cancelada'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilters(prev => ({ ...prev, estado: prev.estado === status ? '' : status }))}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                filters.estado === status
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
-              }`}
-            >
-              {status}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="flex flex-wrap gap-2" aria-label="Filtros rápidos por estado">{statuses.map((status) => <button type="button" key={status} aria-pressed={filters.estado === status} onClick={() => setFilters((current) => ({ ...current, estado: current.estado === status ? '' : status }))} className={`rounded-full px-3 py-1.5 text-xs font-medium ${filters.estado === status ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>{status}</button>)}</div>
 
-      {/* Panel de filtros expandido */}
-      {showFilters && (
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {/* Estado */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Estado</label>
-              <select
-                value={filters.estado}
-                onChange={(e) => setFilters(prev => ({ ...prev, estado: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Todos</option>
-                <option value="Pendiente">Pendiente</option>
-                <option value="Programada">Programada</option>
-                <option value="En Curso">En Curso</option>
-                <option value="Completada">Completada</option>
-                <option value="Cancelada">Cancelada</option>
-              </select>
-            </div>
+      {showFilters && <div className="grid grid-cols-5 gap-4 rounded-xl border bg-card p-4">
+        <FilterSelect id="operating-room-filter" label="Quirófano" value={filters.quirofano} onChange={(value) => setFilters((current) => ({ ...current, quirofano: value }))}><option value="">Todos</option>{mockQuirofanos.map((room) => <option key={room.id} value={room.id}>{room.nombre}</option>)}</FilterSelect>
+        <FilterField id="date-from" label="Desde" type="date" value={filters.fechaDesde} onChange={(value) => setFilters((current) => ({ ...current, fechaDesde: value }))} />
+        <FilterField id="date-to" label="Hasta" type="date" value={filters.fechaHasta} onChange={(value) => setFilters((current) => ({ ...current, fechaHasta: value }))} />
+        <div className="col-span-2"><FilterSelect id="surgeon-filter" label="Cirujano" value={filters.cirujano} onChange={(value) => setFilters((current) => ({ ...current, cirujano: value }))}><option value="">Todos</option>{surgeons.map((surgeon) => <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>)}</FilterSelect></div>
+      </div>}
 
-            {/* Quirofano */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Quirofano</label>
-              <select
-                value={filters.quirofano}
-                onChange={(e) => setFilters(prev => ({ ...prev, quirofano: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Todos</option>
-                {mockQuirofanos.map(q => (
-                  <option key={q.id} value={q.id}>{q.nombre}</option>
-                ))}
-              </select>
-            </div>
+      <p className="text-sm text-muted-foreground">{filtered.length} resultado{filtered.length === 1 ? '' : 's'} de {surgeries.length} · {activeFiltersCount + (filters.search ? 1 : 0)} filtro{activeFiltersCount + (filters.search ? 1 : 0) === 1 ? '' : 's'} activo{activeFiltersCount + (filters.search ? 1 : 0) === 1 ? '' : 's'}</p>
 
-            {/* Fecha desde */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha desde</label>
-              <input
-                type="date"
-                value={filters.fechaDesde}
-                onChange={(e) => setFilters(prev => ({ ...prev, fechaDesde: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+      {filtered.length === 0 ? <EmptyState icon={Search} title="No hay cirugías para mostrar" description="No se encontraron resultados para la búsqueda y los filtros actuales." action={<button type="button" onClick={() => setFilters(emptyFilters)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white">Limpiar filtros</button>} /> : <div className="overflow-hidden rounded-xl border bg-card shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[1180px] text-sm"><thead className="bg-muted/70 text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th scope="col" className="px-4 py-3">Fecha y hora</th><th scope="col" className="px-4 py-3">Paciente / DNI</th><th scope="col" className="px-4 py-3">Intervención / especialidad</th><th scope="col" className="px-4 py-3">Cirujano</th><th scope="col" className="px-4 py-3">Quirófano</th><th scope="col" className="px-4 py-3">Duración</th><th scope="col" className="px-4 py-3">Estado</th><th scope="col" className="px-4 py-3">Acciones</th></tr></thead><tbody className="divide-y">{filtered.map((surgery) => <tr key={surgery.id} className="hover:bg-muted/40"><td className="whitespace-nowrap px-4 py-4 font-medium">{formatDateTime(surgery)}</td><td className="px-4 py-4"><p className="font-medium">{surgery.paciente}</p><p className="text-xs text-muted-foreground">DNI {surgery.dni}</p></td><td className="px-4 py-4"><p>{surgery.intervencion}</p><p className="text-xs text-muted-foreground">{surgery.especialidad}</p></td><td className="px-4 py-4">{surgery.cirujano || 'Sin asignar'}</td><td className="px-4 py-4">{surgery.quirofano || 'Sin asignar'}</td><td className="px-4 py-4">{getDuration(surgery)}</td><td className="px-4 py-4"><SurgeryStatusBadge status={surgery.estado} /></td><td className="px-4 py-4"><div className="flex gap-2"><IconAction label="Ver cirugía" onClick={() => { setSelected(surgery); setMode('view') }}><Eye size={16} /></IconAction>{surgery.estado === 'Pendiente' && <IconAction label="Editar cirugía" tone="blue" onClick={() => { setSelected(surgery); setMode('edit') }}><Edit2 size={16} /></IconAction>}{(surgery.estado === 'Pendiente' || surgery.estado === 'Programada') && <IconAction label="Cancelar cirugía" tone="red" onClick={() => setCancelId(surgery.id)}><Trash2 size={16} /></IconAction>}</div></td></tr>)}</tbody></table></div></div>}
 
-            {/* Fecha hasta */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha hasta</label>
-              <input
-                type="date"
-                value={filters.fechaHasta}
-                onChange={(e) => setFilters(prev => ({ ...prev, fechaHasta: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* DNI Paciente */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">DNI Paciente</label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-                <input
-                  type="text"
-                  value={filters.dniPaciente}
-                  onChange={(e) => setFilters(prev => ({ ...prev, dniPaciente: e.target.value }))}
-                  placeholder="Buscar DNI..."
-                  className="w-full pl-8 pr-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-
-            {/* Cirujano */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Cirujano</label>
-              <select
-                value={filters.cirujano}
-                onChange={(e) => setFilters(prev => ({ ...prev, cirujano: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Todos</option>
-                {cirujanos.map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tabla */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
-            <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Inicio</th>
-                <th className="px-4 py-3">Paciente</th>
-                <th className="px-4 py-3">Especialidad</th>
-                <th className="px-4 py-3">Intervenciones</th>
-                <th className="px-4 py-3">Sala</th>
-                <th className="px-4 py-3">Anestesia</th>
-                <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Opciones</th>
-                <th className="px-4 py-3">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCirugias.map((cirugia) => (
-                <tr key={cirugia.id} className="hover:bg-muted/50">
-                  <td className="px-4 py-4 font-medium text-foreground">{formatDateTime(cirugia)}</td>
-                  <td className="px-4 py-4">
-                    <div className="font-medium text-foreground">{cirugia.paciente}</div>
-                    <div className="text-xs text-muted-foreground">DNI {cirugia.dni}</div>
-                  </td>
-                  <td className="px-4 py-4 text-foreground">{cirugia.especialidad}</td>
-                  <td className="px-4 py-4 text-foreground">{cirugia.intervencion || 'Sin intervenciones'}</td>
-                  <td className="px-4 py-4 text-foreground">{cirugia.quirofano || 'Sin sala'}</td>
-                  <td className="px-4 py-4 text-foreground">{cirugia.anestesia || 'Sin definir'}</td>
-                  <td className="px-4 py-4">
-                    <SurgeryStatusBadge status={cirugia.estado} />
-                  </td>
-                  <td className="px-4 py-4 text-foreground">Sin opciones</td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCirugia(cirugia)
-                          setViewMode('view')
-                        }}
-                        aria-label="Ver cirugía"
-                        title="Ver cirugía"
-                        className="inline-flex rounded-md border border-slate-200 p-2 text-slate-700 transition-colors hover:bg-slate-50"
-                      >
-                        <Eye size={15} />
-                      </button>
-                      {cirugia.estado === 'Pendiente' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedCirugia(cirugia)
-                            setViewMode('edit')
-                          }}
-                          aria-label="Editar cirugía"
-                          title="Editar cirugía"
-                          className="inline-flex rounded-md border border-blue-200 p-2 text-blue-700 transition-colors hover:bg-blue-50"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                      )}
-                      {canCancel(cirugia.estado) && (
-                        <button
-                          type="button"
-                          onClick={() => setCancelSurgeryId(cirugia.id)}
-                          aria-label="Cancelar cirugía"
-                          title="Cancelar cirugía"
-                          className="inline-flex rounded-md border border-red-200 p-2 text-red-700 transition-colors hover:bg-red-50"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {filteredCirugias.length === 0 && (
-        <div className="text-center py-12">
-          <AlertCircle className="mx-auto mb-3 text-muted-foreground" size={40} />
-          <p className="text-muted-foreground">No se encontraron cirugias con los filtros seleccionados</p>
-          {activeFiltersCount > 0 && (
-            <button
-              onClick={clearFilters}
-              className="mt-2 text-sm text-blue-600 hover:text-blue-700"
-            >
-              Limpiar filtros
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Resumen */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>Mostrando {filteredCirugias.length} de {cirugias.length} cirugias</span>
-      </div>
-
-      {/* Modales */}
-      {viewMode === 'view' && selectedCirugia && (
-        <ViewCirugia cirugia={selectedCirugia} onClose={() => {
-          setViewMode(null)
-          setSelectedCirugia(null)
-        }} />
-      )}
-
-      {viewMode === 'edit' && selectedCirugia && (
-        <EditCirugia 
-          cirugia={selectedCirugia} 
-          onClose={() => {
-            setViewMode(null)
-            setSelectedCirugia(null)
-          }}
-          onSave={handleSaveEdit}
-        />
-      )}
-
-      {showProgramarModal && (
-        <ProgramarModal onClose={() => setShowProgramarModal(false)} />
-      )}
-
-      {showWeeklyPlanning && (
-        <WeeklyPlanningModal onClose={() => setShowWeeklyPlanning(false)} />
-      )}
-
-      {cancelSurgeryId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-lg p-6 max-w-sm mx-4 border border-border">
-            <h2 className="text-lg font-bold mb-4 text-foreground">Cancelar cirugía</h2>
-            <p className="text-muted-foreground mb-6">
-              ¿Estás seguro de que querés cancelar esta cirugía? La cirugía permanecerá visible con estado Cancelada.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setCancelSurgeryId(null)}
-                className="px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/80 transition-colors"
-              >
-                Volver
-              </button>
-              <button
-                onClick={() => {
-                  const cirugia = cirugias.find((c) => c.id === cancelSurgeryId)
-                  if (cirugia) handleCancel(cirugia)
-                }}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-              >
-                Confirmar cancelación
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {mode === 'view' && selected && <ViewCirugia cirugia={selected} onClose={() => { setMode(null); setSelected(null) }} />}
+      {mode === 'edit' && selected && <EditCirugia cirugia={selected} onClose={() => { setMode(null); setSelected(null) }} onSave={saveEdit} />}
+      {showCreate && <ProgramarModal onClose={() => setShowCreate(false)} onSave={saveNew} />}
+      {showPlanning && <WeeklyPlanningModal onClose={() => setShowPlanning(false)} viewOnly={planningDecision === 'approved'} onApproved={approvePlanning} onRejected={() => setPlanningDecision('rejected')} />}
+      <ConfirmActionDialog open={Boolean(cancelId)} onOpenChange={(open) => { if (!open) setCancelId(null) }} title="Cancelar cirugía" description="La cirugía permanecerá visible con estado Cancelada. Este cambio sólo dura durante la sesión simulada." confirmLabel="Confirmar cancelación" onConfirm={cancel} />
     </div>
   )
+}
+
+function IconAction({ label, onClick, tone = 'slate', children }: { label: string; onClick: () => void; tone?: 'slate' | 'blue' | 'red'; children: React.ReactNode }) {
+  const colors = tone === 'blue' ? 'border-blue-200 text-blue-700 hover:bg-blue-50' : tone === 'red' ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+  return <button type="button" onClick={onClick} aria-label={label} title={label} className={`rounded-md border p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${colors}`}>{children}</button>
+}
+
+function FilterField({ id, label, type, value, onChange }: { id: string; label: string; type: string; value: string; onChange: (value: string) => void }) {
+  return <div><label htmlFor={id} className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label><input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" /></div>
+}
+
+function FilterSelect({ id, label, value, onChange, children }: { id: string; label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {
+  return <div><label htmlFor={id} className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label><select id={id} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border bg-background px-3 py-2 text-sm">{children}</select></div>
 }
