@@ -35,6 +35,7 @@ pnpm lint
 
 ## MVP Planning Notes
 - `/mvp/cirugias` is the real demo screen for surgeries and planning from Back data.
+- `/mvp/personal` lets Administrators edit the recurring Monday-Friday availability used by the Scheduler.
 - The surgery list defaults to pending surgeries and supports client-side search, status/specialty filters, and sorting.
 - The Front never calls `pf-or-scheduler` directly.
 - Planning creation, status, result, delete, and approval should go through `PF-G1-Back`.

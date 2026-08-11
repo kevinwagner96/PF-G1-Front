@@ -151,7 +151,7 @@ interface SurgeryCatalogs {
   specialties: { id: string; nombre: string }[]
   interventions: { id: string; nombre: string; especialidadId: string }[]
   anesthesia_types: { id: string; nombre: string }[]
-  surgeons: { id: string; nombre: string; rol: string }[]
+  surgeons: { id: string; nombre: string; rol: string; especialidadIds: string[] }[]
 }
 
 interface PlanningPreflight {
@@ -253,7 +253,7 @@ function buildSurgeryPayload(form: SurgeryFormState) {
     },
     intervention_ids: [form.intervention_id],
     tipo_anestesia_id: form.tipo_anestesia_id || null,
-    cirujano_forzado_id: form.cirujano_forzado_id || null,
+    cirujano_forzado_id: form.cirujano_forzado_id,
     duracion_estimada_minutos: Number(form.duracion_estimada_minutos),
     prioridad_clinica: Number(form.prioridad_clinica),
     byer: form.byer,
@@ -663,12 +663,17 @@ export default function MvpCirugiasPage() {
     preflight?.can_plan !== false
   const modalTitle = canReviewPlanning ? 'Revisar planificación semanal' : 'Generar planificación semanal'
   const shouldShowPendingApprovalSnack = canReviewPlanning && !isPlanningModalOpen
+  const selectedIntervention = catalogs?.interventions.find((item) => item.id === surgeryForm.intervention_id)
+  const compatibleSurgeons = (catalogs?.surgeons ?? []).filter(
+    (surgeon) => selectedIntervention && surgeon.especialidadIds.includes(selectedIntervention.especialidadId),
+  )
   const formErrors = useMemo(() => {
     const next: Partial<Record<keyof SurgeryFormState, string>> = {}
     if (!surgeryForm.dni.trim()) next.dni = 'Ingresá el DNI del paciente.'
     else if (!/^\d{7,10}$/.test(surgeryForm.dni.trim())) next.dni = 'Usá entre 7 y 10 números, sin puntos.'
     if (!surgeryForm.paciente.trim()) next.paciente = 'Ingresá el nombre del paciente.'
     if (!surgeryForm.intervention_id) next.intervention_id = 'Seleccioná una intervención.'
+    if (!surgeryForm.cirujano_forzado_id) next.cirujano_forzado_id = 'Seleccioná el cirujano asignado.'
     if (!Number.isFinite(Number(surgeryForm.duracion_estimada_minutos)) || Number(surgeryForm.duracion_estimada_minutos) <= 0) {
       next.duracion_estimada_minutos = 'Ingresá una duración mayor a 0 minutos.'
     }
@@ -1347,7 +1352,7 @@ export default function MvpCirugiasPage() {
             <FormSection title="Procedimiento clínico" description="Información utilizada para priorizar y estimar la cirugía." icon={<Activity size={18} />}>
               <div className="grid gap-4 md:grid-cols-2">
                 <label htmlFor="surgery-intervention" className="text-sm font-medium text-slate-700 md:col-span-2">Intervención <span className="text-red-600">*</span>
-                  <select id="surgery-intervention" value={surgeryForm.intervention_id} aria-invalid={Boolean(formErrors.intervention_id)} onChange={(event) => setSurgeryForm((form) => ({ ...form, intervention_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500">
+                  <select id="surgery-intervention" value={surgeryForm.intervention_id} aria-invalid={Boolean(formErrors.intervention_id)} onChange={(event) => setSurgeryForm((form) => ({ ...form, intervention_id: event.target.value, cirujano_forzado_id: '' }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500">
                     <option value="">Seleccioná una intervención</option>
                     {(catalogs?.interventions ?? []).map((intervention) => {
                       const specialty = catalogs?.specialties.find((item) => item.id === intervention.especialidadId)
@@ -1364,7 +1369,7 @@ export default function MvpCirugiasPage() {
             <FormSection title="Requisitos" description="Asignaciones opcionales y consideraciones para el equipo." icon={<Stethoscope size={18} />}>
               <div className="grid gap-4 md:grid-cols-2">
                 <label htmlFor="surgery-anesthesia" className="text-sm font-medium text-slate-700">Anestesia<select id="surgery-anesthesia" value={surgeryForm.tipo_anestesia_id} onChange={(event) => setSurgeryForm((form) => ({ ...form, tipo_anestesia_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"><option value="">Sin definir</option>{(catalogs?.anesthesia_types ?? []).map((anesthesia) => <option key={anesthesia.id} value={anesthesia.id}>{anesthesia.nombre}</option>)}</select></label>
-                <label htmlFor="surgery-surgeon" className="text-sm font-medium text-slate-700">Cirujano requerido<select id="surgery-surgeon" value={surgeryForm.cirujano_forzado_id} onChange={(event) => setSurgeryForm((form) => ({ ...form, cirujano_forzado_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"><option value="">Sin asignar</option>{(catalogs?.surgeons ?? []).map((surgeon) => <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Dejalo vacío para que la planificación asigne un profesional compatible.</span></label>
+                <label htmlFor="surgery-surgeon" className="text-sm font-medium text-slate-700">Cirujano asignado *<select id="surgery-surgeon" value={surgeryForm.cirujano_forzado_id} onChange={(event) => setSurgeryForm((form) => ({ ...form, cirujano_forzado_id: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500"><option value="">Seleccionar cirujano</option>{compatibleSurgeons.map((surgeon) => <option key={surgeon.id} value={surgeon.id}>{surgeon.nombre}</option>)}</select>{formErrors.cirujano_forzado_id && <span className="mt-1 block text-xs font-normal text-red-600">{formErrors.cirujano_forzado_id}</span>}</label>
                 <div className="flex items-center gap-5 md:col-span-2"><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={surgeryForm.byer} onChange={(event) => setSurgeryForm((form) => ({ ...form, byer: event.target.checked }))} />Byer</label><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={surgeryForm.sedacion} onChange={(event) => setSurgeryForm((form) => ({ ...form, sedacion: event.target.checked }))} />Sedación</label></div>
                 <label htmlFor="surgery-notes" className="text-sm font-medium text-slate-700 md:col-span-2">Observaciones<textarea id="surgery-notes" value={surgeryForm.observaciones} onChange={(event) => setSurgeryForm((form) => ({ ...form, observaciones: event.target.value }))} rows={3} placeholder="Alergias, consideraciones clínicas u otra información relevante..." className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-blue-500" /></label>
               </div>

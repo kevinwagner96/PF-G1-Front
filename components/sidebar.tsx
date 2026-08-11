@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { toast } from '@/hooks/use-toast'
 
 const ACCESS_SYSTEM_ADMIN_PERMISSION = 'accounts.can_access_system_admin'
+const CREATE_PLANNING_PERMISSION = 'plannings.can_create_planning'
 const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? 'http://127.0.0.1:3010/admin/'
 
 interface MenuItem {
@@ -37,6 +38,7 @@ interface MenuItem {
   icon: React.ReactNode
   href?: string
   submenu?: { id: string; label: string; icon: React.ReactNode; href: string }[]
+  requiredPermission?: string
 }
 
 const menuItems: MenuItem[] = [
@@ -75,6 +77,13 @@ const mvpMenuItems: MenuItem[] = [
     ],
   },
   {
+    id: 'personal',
+    label: 'Horarios médicos',
+    icon: <Users size={20} />,
+    href: '/mvp/personal',
+    requiredPermission: CREATE_PLANNING_PERMISSION,
+  },
+  {
     id: 'reportes',
     label: 'Reportes',
     icon: <FileText size={20} />,
@@ -93,8 +102,10 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
   const [expanded, setExpanded] = useState<string | null>('cirugias')
   const [isResettingDemo, setIsResettingDemo] = useState(false)
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false)
-  const visibleMenuItems = navigationMode === 'mvp' ? mvpMenuItems : menuItems
   const canAccessSystemAdmin = user?.permissions?.includes(ACCESS_SYSTEM_ADMIN_PERMISSION) ?? false
+  const visibleMenuItems = (navigationMode === 'mvp' ? mvpMenuItems : menuItems).filter(
+    (item) => !item.requiredPermission || user?.permissions?.includes(item.requiredPermission),
+  )
 
   const handleLogout = () => {
     logout()
