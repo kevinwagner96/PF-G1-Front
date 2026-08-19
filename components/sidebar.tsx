@@ -147,9 +147,7 @@ export function Sidebar({ activePage = 'cirugias', navigationMode = 'mockup' }: 
           <Stethoscope size={24} className="text-blue-600" />
           <span>SurgiCare</span>
         </h2>
-        <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${navigationMode === 'mvp' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-          {navigationMode === 'mvp' ? 'MVP · datos reales' : 'Mockup · simulación'}
-        </span>
+        {navigationMode === 'mvp' && <span className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">MVP</span>}
       </div>
 
       <nav className="flex-1 overflow-y-auto p-4">

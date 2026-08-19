@@ -23,7 +23,7 @@ interface ConfirmActionDialogProps {
   onConfirm: () => void | Promise<void>
   busy?: boolean
   busyLabel?: string
-  tone?: 'danger' | 'primary'
+  tone?: 'danger' | 'primary' | 'success'
   detail?: ReactNode
 }
 
@@ -58,7 +58,9 @@ export default function ConfirmActionDialog({
             className={cn(
               tone === 'danger'
                 ? 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600'
-                : 'bg-blue-600 text-white hover:bg-blue-700',
+                : tone === 'success'
+                  ? 'bg-green-600 text-white hover:bg-green-700 focus-visible:ring-green-600'
+                  : 'bg-blue-600 text-white hover:bg-blue-700',
             )}
           >
             {busy ? busyLabel : confirmLabel}

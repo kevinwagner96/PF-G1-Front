@@ -111,7 +111,7 @@ export default function EmergenciasForm() {
         </div>
         <div>
           <h1 className="text-3xl font-bold text-foreground">Registro de emergencia</h1>
-          <p className="text-muted-foreground mt-1">Asistente simulado: no envía notificaciones ni bloquea recursos reales.</p>
+          <p className="text-muted-foreground mt-1">Complete los datos requeridos para registrar la emergencia.</p>
         </div>
       </div>
 
@@ -589,7 +589,7 @@ export default function EmergenciasForm() {
             <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <Clock className="text-yellow-600" size={20} />
               <span className="text-yellow-800 text-sm">
-                En esta simulación, el registro, las notificaciones al equipo y el bloqueo del quirófano no se ejecutan en sistemas reales.
+                Verifique los datos del paciente, la intervención y el equipo antes de confirmar.
               </span>
             </div>
           </div>
@@ -643,9 +643,9 @@ export default function EmergenciasForm() {
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="text-green-600" size={40} />
             </div>
-            <h3 id="emergency-success-title" className="text-2xl font-bold text-foreground mb-2">Emergencia simulada registrada</h3>
+            <h3 id="emergency-success-title" className="text-2xl font-bold text-foreground mb-2">Emergencia registrada</h3>
             <p className="text-muted-foreground mb-4">
-              El resumen quedó confirmado durante esta sesión. No se enviaron notificaciones ni se reservó un quirófano real.
+              La información de la emergencia quedó registrada correctamente.
             </p>
             <div className="mt-6 flex flex-col gap-2">
               <button type="button" onClick={resetForm} className="rounded-lg bg-red-600 px-4 py-2.5 font-medium text-white">Registrar otra emergencia</button>

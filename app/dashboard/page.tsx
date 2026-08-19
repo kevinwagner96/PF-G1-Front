@@ -4,7 +4,6 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import Sidebar from '@/components/sidebar'
-import MockDataNotice from '@/components/mock-data-notice'
 import PageHeader from '@/components/page-header'
 import { 
   Calendar, 
@@ -106,7 +105,6 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-background">
       <Sidebar activePage="dashboard" />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <MockDataNotice />
         <main className="flex-1 overflow-auto">
           <div className="p-6 md:p-8">
             <PageHeader className="mb-8" title="Dashboard" description={`Bienvenido/a, ${user?.nombre}. Estas son las tareas y situaciones que requieren atención hoy.`} />

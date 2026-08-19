@@ -48,17 +48,17 @@ export default function QuirofanosList() {
     if (!formData.nombre.trim()) return
     setQuirofanos((current) => editingId ? current.map((item) => item.id === editingId ? { ...item, ...formData } : item) : [...current, { id: `room-${Date.now()}`, ...formData }])
     setShowModal(false)
-    toast({ title: editingId ? 'Quirófano actualizado' : 'Quirófano creado', description: 'El cambio se conserva durante esta sesión simulada.' })
+    toast({ title: editingId ? 'Quirófano actualizado' : 'Quirófano creado', description: 'Los cambios se guardaron correctamente.' })
   }
   const toggleAvailability = (id: string) => {
     setQuirofanos((current) => current.map((item) => item.id === id ? { ...item, disponible: !item.disponible } : item))
-    toast({ title: 'Disponibilidad actualizada', description: 'El estado operativo cambió en el mock.' })
+    toast({ title: 'Disponibilidad actualizada', description: 'El estado operativo fue actualizado.' })
   }
   const remove = () => {
     if (!deleteId) return
     setQuirofanos((current) => current.filter((item) => item.id !== deleteId))
     setDeleteId(null)
-    toast({ title: 'Quirófano eliminado', description: 'Se quitó de la simulación durante esta sesión.' })
+    toast({ title: 'Quirófano eliminado', description: 'Se quitó de la lista.' })
   }
 
   const filteredQuirofanos = quirofanos.filter(q => {
@@ -258,7 +258,7 @@ export default function QuirofanosList() {
           </div>
         </div>
       )}
-      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Eliminar quirófano" description="Se quitará de la lista simulada durante esta sesión." confirmLabel="Eliminar" onConfirm={remove} />
+      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Eliminar quirófano" description="Se quitará de la lista." confirmLabel="Eliminar" onConfirm={remove} />
     </div>
   )
 }

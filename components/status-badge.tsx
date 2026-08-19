@@ -13,6 +13,7 @@ const surgeryStatuses: Record<string, { label: string; className: string; icon: 
 }
 
 const planningStatuses: Record<string, { label: string; className: string; icon: typeof Activity }> = {
+  ready: { label: 'Preparación', className: 'border-slate-200 bg-slate-50 text-slate-700', icon: CircleDashed },
   planning: { label: 'Planificando', className: 'border-blue-200 bg-blue-50 text-blue-700', icon: Activity },
   pending_approval: { label: 'Pendiente de aprobación', className: 'border-amber-200 bg-amber-50 text-amber-800', icon: Clock3 },
   approved: { label: 'Aprobada', className: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: CheckCircle2 },

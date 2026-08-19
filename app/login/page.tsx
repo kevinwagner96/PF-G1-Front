@@ -133,25 +133,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {process.env.NODE_ENV !== 'production' && (
-          <div className="mt-6 border-t border-gray-100 pt-6">
-            <p className="text-xs text-gray-500 mb-3">Credenciales de prueba:</p>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between p-2 bg-gray-50 rounded">
-                <span className="text-gray-600">Admin:</span>
-                <span className="font-mono text-gray-800">admin@hospital.com / admin123</span>
-              </div>
-              <div className="flex justify-between p-2 bg-gray-50 rounded">
-                <span className="text-gray-600">Cirujano:</span>
-                <span className="font-mono text-gray-800">cirujano@hospital.com / cirujano123</span>
-              </div>
-              <div className="flex justify-between p-2 bg-gray-50 rounded">
-                <span className="text-gray-600">Bloqueado:</span>
-                <span className="font-mono text-gray-800">bloqueado@hospital.com / blocked123</span>
-              </div>
-            </div>
-          </div>
-          )}
         </div>
 
         {/* Footer */}

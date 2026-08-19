@@ -71,10 +71,9 @@ export default function SeleccionarExperienciaPage() {
             <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white">
               <MonitorCog size={34} />
             </div>
-            <h3 className="text-3xl font-bold text-slate-950">Mockup</h3>
+            <h3 className="text-3xl font-bold text-slate-950">Gestión integral</h3>
             <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
-              Recorré el sistema completo con datos simulados. Los cambios duran durante la sesión y se
-              restablecen al recargar.
+              Accedé a la gestión completa de cirugías, agenda, recursos, pacientes y personal.
             </p>
           </button>
 
@@ -86,14 +85,14 @@ export default function SeleccionarExperienciaPage() {
             <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white">
               <FlaskConical size={34} />
             </div>
-            <h3 className="text-3xl font-bold text-slate-950">MVP</h3>
-            <p className="mt-2 text-lg font-semibold text-emerald-700">Programacion de Agenda con IA</p>
+            <h3 className="text-3xl font-bold text-slate-950">Planificación inteligente</h3>
+            <p className="mt-2 text-lg font-semibold text-emerald-700">Programación de agenda con IA</p>
             <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
-              Trabajá con cirugías reales, generá y revisá planificaciones y consultá indicadores de gestión.
+              Generá y revisá planificaciones y consultá indicadores para mejorar la gestión quirúrgica.
             </p>
             <div className="mt-8 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
               <CalendarClock size={16} />
-              Datos reales desde PostgreSQL
+              Optimización y reportes
             </div>
           </button>
         </div>

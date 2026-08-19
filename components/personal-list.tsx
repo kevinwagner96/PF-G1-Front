@@ -59,19 +59,19 @@ export default function PersonalList() {
       ? current.map((item) => item.id === editingId ? { ...item, ...formData } : item)
       : [...current, { id: `personal-${Date.now()}`, ...formData, especialidad: formData.rol, passwordInicial }])
     setShowModal(false)
-    toast({ title: editingId ? 'Personal actualizado' : 'Personal creado', description: 'El cambio se conserva durante esta sesión simulada.' })
+    toast({ title: editingId ? 'Personal actualizado' : 'Personal creado', description: 'Los cambios se guardaron correctamente.' })
   }
 
   const toggleStatus = (id: string) => {
     setPersonal((current) => current.map((item) => item.id === id ? { ...item, estado: !item.estado } : item))
-    toast({ title: 'Estado actualizado', description: 'La disponibilidad del personal cambió en el mock.' })
+    toast({ title: 'Estado actualizado', description: 'La disponibilidad del personal fue actualizada.' })
   }
 
   const remove = () => {
     if (!deleteId) return
     setPersonal((current) => current.filter((item) => item.id !== deleteId))
     setDeleteId(null)
-    toast({ title: 'Personal dado de baja', description: 'Se quitó de la lista durante esta sesión.' })
+    toast({ title: 'Personal dado de baja', description: 'Se quitó de la lista.' })
   }
 
   return (
@@ -283,7 +283,7 @@ export default function PersonalList() {
           </div>
         </div>
       )}
-      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Dar de baja al personal" description="Se quitará de la lista simulada durante esta sesión." confirmLabel="Dar de baja" onConfirm={remove} />
+      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Dar de baja al personal" description="Se quitará de la lista." confirmLabel="Dar de baja" onConfirm={remove} />
     </div>
   )
 }

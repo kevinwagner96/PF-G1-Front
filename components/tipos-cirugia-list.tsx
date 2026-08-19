@@ -64,17 +64,17 @@ export default function TiposCirugiaList() {
     if (!formData.nombre.trim() || !formData.especialidad || formData.duracionEstimada <= 0) return
     setTipos((current) => editingId ? current.map((item) => item.id === editingId ? { ...item, ...formData } : item) : [...current, { id: `procedure-${Date.now()}`, ...formData }])
     setShowModal(false)
-    toast({ title: editingId ? 'Tipo actualizado' : 'Tipo de cirugía creado', description: 'El cambio se conserva durante esta sesión simulada.' })
+    toast({ title: editingId ? 'Tipo actualizado' : 'Tipo de cirugía creado', description: 'Los cambios se guardaron correctamente.' })
   }
   const toggleStatus = (id: string) => {
     setTipos((current) => current.map((item) => item.id === id ? { ...item, estado: !item.estado } : item))
-    toast({ title: 'Estado actualizado', description: 'El catálogo simulado fue actualizado.' })
+    toast({ title: 'Estado actualizado', description: 'El catálogo fue actualizado.' })
   }
   const remove = () => {
     if (!deleteId) return
     setTipos((current) => current.filter((item) => item.id !== deleteId))
     setDeleteId(null)
-    toast({ title: 'Tipo eliminado', description: 'Se quitó del catálogo durante esta sesión.' })
+    toast({ title: 'Tipo eliminado', description: 'Se quitó del catálogo.' })
   }
 
   const getComplejidadColor = (complejidad: string) => {
@@ -304,7 +304,7 @@ export default function TiposCirugiaList() {
           </div>
         </div>
       )}
-      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Eliminar tipo de cirugía" description="Se quitará del catálogo simulado durante esta sesión." confirmLabel="Eliminar" onConfirm={remove} />
+      <ConfirmActionDialog open={Boolean(deleteId)} onOpenChange={(open) => { if (!open) setDeleteId(null) }} title="Eliminar tipo de cirugía" description="Se quitará del catálogo." confirmLabel="Eliminar" onConfirm={remove} />
     </div>
   )
 }

@@ -9,12 +9,15 @@ import {
   Clock,
   Edit3,
   Eye,
+  Gauge,
   ListFilter,
+  ListChecks,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
   Stethoscope,
+  Timer,
   Trash2,
   UserRound,
   X,
@@ -128,6 +131,17 @@ interface PlanningOutput {
   }
   dias?: PlanningDay[]
 }
+
+interface MvpTimelineSurgery {
+  id: string
+  hora: string
+  duracion: number
+  paciente: string
+  especialidad: string
+  cirujano: string
+}
+
+const planningDayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
 
 interface PlanningResponse {
   id: string
@@ -271,6 +285,72 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
   )
 }
 
+function normalizePlanningDay(value: string) {
+  const normalized = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return planningDayNames.find((day) => day.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === normalized) ?? value
+}
+
+function MvpKpiCard({ icon: Icon, label, value, detail, tone }: { icon: typeof ListChecks; label: string; value: string; detail: string; tone: 'slate' | 'amber' | 'emerald' }) {
+  const toneClasses = tone === 'amber' ? 'text-amber-500' : tone === 'emerald' ? 'text-emerald-500' : 'text-slate-400'
+  return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className={`flex items-center gap-2 text-sm font-semibold uppercase tracking-wide ${toneClasses}`}><Icon size={20} />{label}</div><p className="mt-3 text-3xl font-bold text-slate-900">{value}</p><p className="mt-1 text-sm text-slate-400">{detail}</p></div>
+}
+
+function MvpSpecialtyLegend({ specialties }: { specialties: string[] }) {
+  return <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm"><span className="text-sm font-semibold uppercase tracking-wide text-slate-400">Especialidades</span>{specialties.map((specialty) => <span key={specialty} className="inline-flex items-center gap-2 text-sm text-slate-600"><span className={`h-3 w-3 rounded-full ${mvpSpecialtyDot(specialty)}`} />{specialty}</span>)}</div>
+}
+
+function MvpTimelineRoom({ room, groupedByDay }: { room: string; groupedByDay: Record<string, MvpTimelineSurgery[]> }) {
+  const roomTone = room.toLowerCase().includes('1') ? 'bg-indigo-500' : room.toLowerCase().includes('2') ? 'bg-violet-500' : 'bg-cyan-500'
+  return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-4 text-lg font-semibold text-slate-900"><span className={`h-3 w-3 rounded-full ${roomTone}`} />{room}</header><div className="grid grid-cols-[3.5rem_repeat(5,minmax(0,1fr))]"><div aria-hidden="true" />{planningDayNames.map((day) => <h3 key={day} className="border-b border-l border-slate-200 px-4 py-3 font-semibold text-slate-700">{day}</h3>)}<MvpTimeAxis />{planningDayNames.map((day) => <MvpTimelineDay key={day} surgeries={groupedByDay[day] ?? []} />)}</div></section>
+}
+
+function MvpTimeAxis() {
+  const hours = Array.from({ length: 8 }, (_, index) => index + 8)
+  return <div aria-label="Horario de 08:00 a 15:00" className="relative h-[420px] border-r border-slate-200 bg-white text-[11px] text-slate-400">{hours.map((hour, index) => <span key={hour} className={`absolute right-2 ${index === 0 ? 'translate-y-0' : index === hours.length - 1 ? '-translate-y-full' : '-translate-y-1/2'}`} style={{ top: `${(index / (hours.length - 1)) * 100}%` }}>{String(hour).padStart(2, '0')}:00</span>)}</div>
+}
+
+function MvpTimelineDay({ surgeries }: { surgeries: MvpTimelineSurgery[] }) {
+  return <div className="relative h-[420px] overflow-hidden border-l border-slate-200 bg-white">{Array.from({ length: 8 }, (_, index) => <span key={index} className="absolute inset-x-0 border-t border-dashed border-slate-200" style={{ top: `${(index / 7) * 100}%` }} />)}{surgeries.map((surgery) => <MvpTimelineSurgery key={surgery.id} surgery={surgery} />)}</div>
+}
+
+function MvpTimelineSurgery({ surgery }: { surgery: MvpTimelineSurgery }) {
+  const startMinutes = mvpToMinutes(surgery.hora)
+  const top = Math.max(0, Math.min(100, ((startMinutes - 8 * 60) / (7 * 60)) * 100))
+  const height = Math.max(3, Math.min(100 - top, (Math.max(15, surgery.duracion) / (7 * 60)) * 100))
+  const compact = surgery.duracion <= 90
+  return <article className={`absolute inset-x-3 overflow-hidden rounded-xl border shadow-sm ${compact ? 'p-2 text-[11px]' : 'p-3 text-xs'} ${mvpSpecialtyClasses(surgery.especialidad)}`} style={{ top: `calc(${top}% + 4px)`, height: `calc(${height}% - 8px)` }}><div className="flex items-center justify-between gap-1 font-semibold"><span>{surgery.hora} - {mvpFormatTime(surgery.hora, surgery.duracion)}</span><span className="text-slate-400">{surgery.duracion}′</span></div><p className="mt-1 font-semibold text-slate-800">{surgery.paciente}</p><p className="text-slate-500">{surgery.cirujano}</p><p className="mt-1 flex items-center gap-1 text-slate-500"><span className={`h-2 w-2 rounded-full ${mvpSpecialtyDot(surgery.especialidad)}`} />{surgery.especialidad}</p></article>
+}
+
+function mvpToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map(Number)
+  return (Number.isFinite(hours) ? hours : 8) * 60 + (Number.isFinite(minutes) ? minutes : 0)
+}
+
+function mvpFormatTime(start: string, duration: number) {
+  const end = mvpToMinutes(start) + duration
+  return `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`
+}
+
+function mvpSpecialtyClasses(specialty: string) {
+  if (specialty === 'Cirugía General') return 'border-emerald-100 bg-emerald-50'
+  if (specialty === 'Traumatología') return 'border-blue-100 bg-blue-50'
+  if (specialty === 'Urología') return 'border-amber-100 bg-amber-50'
+  if (specialty === 'Ginecología') return 'border-rose-100 bg-rose-50'
+  if (specialty === 'Oftalmología') return 'border-cyan-100 bg-cyan-50'
+  if (specialty === 'Neurocirugía') return 'border-violet-100 bg-violet-50'
+  return 'border-violet-100 bg-violet-50'
+}
+
+function mvpSpecialtyDot(specialty: string) {
+  if (specialty === 'Cirugía General') return 'bg-emerald-500'
+  if (specialty === 'Traumatología') return 'bg-blue-500'
+  if (specialty === 'Urología') return 'bg-amber-500'
+  if (specialty === 'Ginecología') return 'bg-rose-500'
+  if (specialty === 'Oftalmología') return 'bg-cyan-500'
+  if (specialty === 'Neurocirugía') return 'bg-violet-500'
+  return 'bg-violet-500'
+}
+
 
 export default function MvpCirugiasPage() {
   const router = useRouter()
@@ -304,7 +384,7 @@ export default function MvpCirugiasPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [filters, setFilters] = useState({
     search: '',
-    estado: '',
+    estado: 'Pendiente',
     quirofano: '',
     fechaDesde: '',
     fechaHasta: '',
@@ -591,7 +671,7 @@ export default function MvpCirugiasPage() {
   }
 
   const planningOutput = planning?.output_payload
-  const planningDays = planningOutput?.dias ?? []
+  const planningDays = useMemo(() => planningOutput?.dias ?? [], [planningOutput?.dias])
   const surgeryIdBySchedulerId = useMemo(
     () => reverseMap(planning?.input_payload?.id_maps?.surgeries),
     [planning?.input_payload?.id_maps?.surgeries],
@@ -614,6 +694,27 @@ export default function MvpCirugiasPage() {
       })),
     ),
   )
+  const planningTimelineRooms = useMemo(() => {
+    const rooms = Array.from(new Set(planningDays.flatMap((day) => day.bloques.map((block) => block.quirofano))))
+    return rooms.map((room) => ({
+      room,
+      groupedByDay: Object.fromEntries(
+        planningDayNames.map((dayName) => [
+          dayName,
+          scheduledPlanningItems
+            .filter(({ day, block }) => normalizePlanningDay(day) === dayName && block.quirofano === room)
+            .map(({ item, block, cirugia }) => ({
+              id: `${room}-${dayName}-${item.paciente_id}-${item.hora_inicio}`,
+              hora: item.hora_inicio,
+              duracion: item.duracion ?? cirugia?.duracion_estimada_minutos ?? 90,
+              paciente: cirugia?.paciente ?? `Cirugía #${item.paciente_id}`,
+              especialidad: cirugia?.especialidad ?? block.especialidad,
+              cirujano: item.medico,
+            } satisfies MvpTimelineSurgery)),
+        ]),
+      ) as Record<string, MvpTimelineSurgery[]>,
+    }))
+  }, [planningDays, scheduledPlanningItems])
   const utilizedPlanningBlocks = planningDays.flatMap((day) => day.bloques).filter((block) => block.cronograma.length > 0)
   const averagePlanningUtilization =
     utilizedPlanningBlocks.length > 0
@@ -646,7 +747,7 @@ export default function MvpCirugiasPage() {
   const activeFiltersCount = Object.values(filters).filter(Boolean).length
   const clearFilters = () => setFilters({
     search: '',
-    estado: '',
+    estado: 'Pendiente',
     quirofano: '',
     fechaDesde: '',
     fechaHasta: '',
@@ -753,7 +854,7 @@ export default function MvpCirugiasPage() {
             )}
 
             <Dialog open={isPlanningModalOpen} onOpenChange={setIsPlanningModalOpen}>
-              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[min(1380px,calc(100vw-2rem))]">
+              <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-[min(1380px,calc(100vw-2rem))]">
                 <DialogHeader>
                   <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
                     <div>
@@ -774,21 +875,27 @@ export default function MvpCirugiasPage() {
                   </div>
                 </DialogHeader>
 
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+
                 {!planning && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-lg bg-white p-4 shadow-sm">
-                        <p className="text-xs font-medium uppercase text-slate-500">Pendientes</p>
-                        <p className="mt-1 text-3xl font-semibold text-slate-900">{pendingCirugiasCount}</p>
-                      </div>
-                      <div className="rounded-lg bg-white p-4 shadow-sm md:col-span-2">
-                        <p className="text-sm font-medium text-slate-900">Planificación semanal</p>
-                        <p className="mt-1 text-sm text-slate-600">
-                          Generá una propuesta automática para organizar quirófanos, turnos y equipos disponibles.
-                        </p>
-                        <p className="mt-2 text-xs font-medium text-blue-700">{formatPlanningWeek()}</p>
-                      </div>
-                    </div>
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center">
+                    <CalendarDays className="mx-auto text-slate-400" size={36} />
+                    <h3 className="mt-3 text-lg font-semibold text-slate-900">Todavía no hay una planificación para esta semana</h3>
+                    <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">
+                      Generá una propuesta para distribuir las {pendingCirugiasCount} cirugías pendientes en los quirófanos y horarios disponibles.
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-blue-700">{formatPlanningWeek()}</p>
+                    {canCreatePlanning && (
+                      <button
+                        type="button"
+                        onClick={startPlanning}
+                        disabled={isPlanningRequesting || !canStartPlanning}
+                        className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                      >
+                        <Sparkles size={18} />
+                        {isPlanningRequesting ? 'Planificando...' : 'Generar planificación'}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -849,8 +956,8 @@ export default function MvpCirugiasPage() {
                 )}
 
                 {planning?.status === 'pending_approval' && (
-                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    <Clock size={16} />
+                  <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    <Clock size={18} />
                     Esta planificación está pendiente de aprobación del cirujano.
                   </div>
                 )}
@@ -882,81 +989,15 @@ export default function MvpCirugiasPage() {
 
                 {planningDays.length > 0 && (
                   <div className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-4">
-                      <div className="rounded-lg border border-slate-200 bg-white p-4">
-                        <p className="text-xs font-medium uppercase text-slate-500">Programadas</p>
-                        <p className="mt-1 text-2xl font-semibold text-slate-900">
-                          {planningOutput?.resumen?.pacientes_programados ?? scheduledPlanningItems.length}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-white p-4">
-                        <p className="text-xs font-medium uppercase text-slate-500">Quedan afuera</p>
-                        <p className="mt-1 text-2xl font-semibold text-slate-900">
-                          {planningOutput?.resumen?.pacientes_pendientes ?? pendingSurgeries.length}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-white p-4">
-                        <p className="text-xs font-medium uppercase text-slate-500">Utilización prom.</p>
-                        <p className="mt-1 text-2xl font-semibold text-slate-900">{averagePlanningUtilization}%</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-white p-4">
-                        <p className="text-xs font-medium uppercase text-slate-500">Ejecución</p>
-                        <p className="mt-1 text-2xl font-semibold text-slate-900">
-                          {planning?.duration_seconds ?? planningOutput?.duracion_segundos ?? '-'}s
-                        </p>
-                      </div>
+                    <div className="grid gap-4 md:grid-cols-4">
+                      <MvpKpiCard icon={ListChecks} label="Programadas" value={String(planningOutput?.resumen?.pacientes_programados ?? scheduledPlanningItems.length)} detail="de solicitudes" tone="slate" />
+                      <MvpKpiCard icon={CalendarDays} label="Quedan afuera" value={String(planningOutput?.resumen?.pacientes_pendientes ?? pendingSurgeries.length)} detail="solicitudes" tone="amber" />
+                      <MvpKpiCard icon={Gauge} label="Utilización prom." value={`${averagePlanningUtilization}%`} detail="promedio semanal" tone="emerald" />
+                      <MvpKpiCard icon={Timer} label="Ejecución" value={`${planning?.duration_seconds ?? planningOutput?.duracion_segundos ?? '-'} s`} detail="tiempo de generación" tone="slate" />
                     </div>
-                    <div className="overflow-x-auto rounded-lg border border-slate-200">
-                      <div className="grid min-w-[1180px] grid-cols-5 divide-x divide-slate-200">
-                        {planningDays.map((day) => (
-                          <div key={day.nombre} className="bg-white">
-                            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
-                              <p className="text-sm font-semibold text-slate-900">{day.nombre}</p>
-                            </div>
-                            <div className="space-y-3 p-3">
-                              {day.bloques
-                                .filter((block) => block.cronograma.length > 0)
-                                .map((block, blockIndex) => (
-                                  <div key={`${day.nombre}-${block.quirofano}-${block.turno}-${blockIndex}`} className="rounded-lg border border-slate-200 p-3">
-                                    <div className="mb-2 flex items-start justify-between gap-2">
-                                      <div>
-                                        <p className="text-sm font-semibold text-slate-900">{block.turno}</p>
-                                        <p className="text-xs text-slate-600">{block.quirofano}</p>
-                                        <p className="text-xs text-slate-500">{block.especialidad}</p>
-                                      </div>
-                                      <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700">
-                                        {block.utilizacion_porcentaje}%
-                                      </span>
-                                    </div>
-                                    <div className="space-y-2">
-                                      {block.cronograma.map((item) => {
-                                        const cirugia = cirugiasById[surgeryIdBySchedulerId[item.paciente_id]]
-                                        return (
-                                          <div key={`${block.quirofano}-${item.paciente_id}`} className="rounded-md bg-slate-50 px-2 py-2 text-xs">
-                                            <div className="flex items-center justify-between gap-2">
-                                              <span className="font-semibold text-slate-900">
-                                                {item.hora_inicio} - {item.hora_fin}
-                                              </span>
-                                              <span className="text-slate-500">{item.duracion ?? '-'} min</span>
-                                            </div>
-                                            <p className="mt-1 font-medium text-slate-900">
-                                              {cirugia?.paciente ?? `Cirugía #${item.paciente_id}`}
-                                            </p>
-                                            <p className="text-slate-600">{item.medico}</p>
-                                            <p className="text-slate-500">{cirugia?.intervenciones.join(', ') ?? block.especialidad}</p>
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                ))}
-                              {day.bloques.every((block) => block.cronograma.length === 0) && (
-                                <p className="py-6 text-center text-xs text-slate-400">Sin cirugías asignadas</p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                    <MvpSpecialtyLegend specialties={Array.from(new Set(scheduledPlanningItems.map(({ block, cirugia }) => cirugia?.especialidad ?? block.especialidad)))} />
+                    <div className="space-y-5">
+                      {planningTimelineRooms.map(({ room, groupedByDay }) => <MvpTimelineRoom key={room} room={room} groupedByDay={groupedByDay} />)}
                     </div>
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                       <button
@@ -965,9 +1006,9 @@ export default function MvpCirugiasPage() {
                         className="flex w-full items-center justify-between gap-3 text-left"
                       >
                         <div>
-                          <h3 className="font-semibold text-amber-950">Cirugías no asignadas · {pendingSurgeries.length}</h3>
+                          <h3 className="font-semibold text-amber-950">{pendingSurgeries.length} quedan afuera</h3>
                           <p className="mt-1 text-xs text-amber-700">
-                            {showPendingOutside ? 'Ocultá' : 'Revisá'} las solicitudes que no pudieron incluirse en esta propuesta.
+                            {showPendingOutside ? 'Ocultá' : 'Tocá para ver'} las cirugías no incluidas en esta propuesta.
                           </p>
                         </div>
                         <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-800 shadow-sm">
@@ -992,6 +1033,8 @@ export default function MvpCirugiasPage() {
                     </div>
                   </div>
                 )}
+
+                </div>
 
                 <DialogFooter className="items-center sm:justify-between">
                   <div className="flex flex-wrap gap-2">
@@ -1041,21 +1084,21 @@ export default function MvpCirugiasPage() {
                             className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-red-300"
                           >
                             <XCircle size={14} />
-                            {isRejectingPlanning ? 'Rechazando...' : showRejectReason ? 'Confirmar rechazo' : 'Rechazar'}
+                            {isRejectingPlanning ? 'Rechazando...' : showRejectReason ? 'Confirmar rechazo' : 'Rechazar con motivo'}
                           </button>
                         </div>
                         <button
                           type="button"
                           onClick={() => setIsApproveConfirmOpen(true)}
                           disabled={isApprovingPlanning}
-                          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
+                          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
                         >
                           <CheckCircle size={14} />
                           {isApprovingPlanning ? 'Aprobando...' : 'Aprobar planificación'}
                         </button>
                       </>
                     )}
-                    {canCreatePlanning && (
+                    {canCreatePlanning && planning && (planning.status === 'failed' || planning.status === 'rejected') && (
                       <button
                         type="button"
                         onClick={startPlanning}
@@ -1063,9 +1106,7 @@ export default function MvpCirugiasPage() {
                         className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
                       >
                         <Sparkles size={16} />
-                        {isPlanningRequesting || planning?.status === 'planning'
-                          ? 'Planificando...'
-                          : 'Generar planificación semanal'}
+                        {isPlanningRequesting ? 'Planificando...' : 'Generar planificación semanal'}
                       </button>
                     )}
                   </div>
@@ -1463,7 +1504,7 @@ export default function MvpCirugiasPage() {
         confirmLabel="Aprobar planificación"
         busyLabel="Aprobando..."
         busy={isApprovingPlanning}
-        tone="primary"
+        tone="success"
         onConfirm={approvePlanning}
         detail={planning && <FeedbackMessage tone="warning">{planningOutput?.resumen?.pacientes_programados ?? scheduledPlanningItems.length} cirugías serán programadas. Revisá la propuesta completa antes de confirmar.</FeedbackMessage>}
       />
