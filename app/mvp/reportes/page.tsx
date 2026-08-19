@@ -7,16 +7,31 @@ import {
   BarChart3,
   CalendarDays,
   Clock,
+  Download,
   Percent,
   RefreshCw,
   XCircle,
 } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import Sidebar from '@/components/sidebar'
 import { apiRequest } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import FeedbackMessage from '@/components/feedback-message'
 import PageHeader from '@/components/page-header'
-import StatusBadge from '@/components/status-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface MetricValue {
@@ -43,6 +58,16 @@ interface WaitBySpecialtyDetail {
   surgeries_count: number
 }
 
+interface SurgeriesBySpecialtyDetail {
+  specialty: string
+  count: number
+}
+
+interface SurgeriesByDayDetail {
+  date: string
+  count: number
+}
+
 interface ReportsSummaryResponse {
   generated_at: string
   range: {
@@ -56,6 +81,8 @@ interface ReportsSummaryResponse {
     operating_rooms: OperatingRoomDetail[]
     statuses: StatusDetail[]
     wait_by_specialty: WaitBySpecialtyDetail[]
+    surgeries_by_specialty: SurgeriesBySpecialtyDetail[]
+    surgeries_by_day: SurgeriesByDayDetail[]
   }
 }
 
@@ -86,11 +113,27 @@ function formatMetric(metric: MetricValue) {
   return String(metric.value)
 }
 
-function formatMinutes(value: number) {
-  if (value < 60) return `${value} min`
-  const hours = Math.floor(value / 60)
-  const minutes = value % 60
-  return minutes ? `${hours} h ${minutes} min` : `${hours} h`
+function formatShortDate(value: string) {
+  const [year, month, day] = value.split('-')
+  return `${day}/${month}/${year.slice(2)}`
+}
+
+const SURGERY_STATUS_COLORS: Record<string, string> = {
+  Pendiente: '#94a3b8',
+  Programada: '#3b82f6',
+  'En Curso': '#f59e0b',
+  Completada: '#10b981',
+  Cancelada: '#ef4444',
+}
+
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#94a3b8']
+
+function ChartEmpty({ text }: { text: string }) {
+  return (
+    <div className="flex h-full items-center justify-center text-sm text-slate-400">
+      {text}
+    </div>
+  )
 }
 
 export default function MvpReportesPage() {
@@ -170,24 +213,44 @@ export default function MvpReportesPage() {
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar activePage="reportes" navigationMode="mvp" />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <main className="flex-1 overflow-auto">
-          <div className="p-6 md:p-8">
+    <div className="flex h-screen bg-background print:block print:h-auto">
+      <div className="print:hidden">
+        <Sidebar activePage="reportes" navigationMode="mvp" />
+      </div>
+      <div className="flex-1 flex flex-col overflow-hidden print:overflow-visible">
+        <main className="flex-1 overflow-auto print:overflow-visible">
+          <div className="p-6 md:p-8 print:p-0">
             <PageHeader
               className="mb-6"
               eyebrow="MVP · Datos reales"
               title="Reportes"
               description="Indicadores clave de gestión quirúrgica calculados en tiempo real para el período seleccionado."
               actions={report && (
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                  Generado: {formatDateTime(report.generated_at)}
-                </div>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 print:hidden"
+                  >
+                    <Download size={16} />
+                    Descargar PDF
+                  </button>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 print:hidden">
+                    Generado: {formatDateTime(report.generated_at)}
+                  </div>
+                </>
               )}
             />
 
-            <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
+            {report && (
+              <div className="hidden print:mb-6 print:block">
+                <p className="text-sm font-medium text-slate-600">
+                  Período: {new Intl.DateTimeFormat('es-AR').format(new Date(`${report.range.date_from}T12:00:00`))} al {new Intl.DateTimeFormat('es-AR').format(new Date(`${report.range.date_to}T12:00:00`))} · Generado: {formatDateTime(report.generated_at)}
+                </p>
+              </div>
+            )}
+
+            <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 print:hidden">
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Desde
                 <input
@@ -258,37 +321,101 @@ export default function MvpReportesPage() {
                   ))}
                 </div>
 
-                <div className="grid gap-6 xl:grid-cols-3">
+                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 px-4 py-3">
+                    <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+                      <Activity size={18} className="text-blue-600" />
+                      Evolutivo de cirugías por día
+                    </h2>
+                  </div>
+                  <div className="h-72 p-4">
+                    {report.details.surgeries_by_day.some((item) => item.count > 0) ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={report.details.surgeries_by_day} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="date" tickFormatter={formatShortDate} tick={{ fontSize: 12 }} minTickGap={24} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                          <Tooltip labelFormatter={(label) => formatShortDate(String(label))} />
+                          <Legend />
+                          <Line type="monotone" dataKey="count" name="Cirugías" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <ChartEmpty text="Sin cirugías en el período" />
+                    )}
+                  </div>
+                </section>
+
+                <div className="grid gap-6 xl:grid-cols-2">
                   <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                     <div className="border-b border-slate-200 px-4 py-3">
                       <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-                        <Activity size={18} className="text-blue-600" />
+                        <CalendarDays size={18} className="text-blue-600" />
+                        Cirugías por especialidad
+                      </h2>
+                    </div>
+                    <div className="h-72 p-4">
+                      {report.details.surgeries_by_specialty.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart layout="vertical" data={report.details.surgeries_by_specialty} margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+                            <YAxis type="category" dataKey="specialty" width={130} tick={{ fontSize: 12 }} />
+                            <Tooltip />
+                            <Bar dataKey="count" name="Cirugías" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <ChartEmpty text="Sin cirugías en el período" />
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 px-4 py-3">
+                      <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+                        <Clock size={18} className="text-blue-600" />
+                        Espera por especialidad
+                      </h2>
+                    </div>
+                    <div className="h-72 p-4">
+                      {report.details.wait_by_specialty.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart layout="vertical" data={report.details.wait_by_specialty} margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis type="number" tick={{ fontSize: 12 }} />
+                            <YAxis type="category" dataKey="specialty" width={130} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value) => [`${value} días`, 'Espera promedio']} />
+                            <Bar dataKey="average_wait_days" name="Espera promedio" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <ChartEmpty text="Sin cirugías programadas" />
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 px-4 py-3">
+                      <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+                        <Percent size={18} className="text-blue-600" />
                         Utilización por quirófano
                       </h2>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Quirófano</th>
-                            <th className="px-4 py-3">Uso</th>
-                            <th className="px-4 py-3">%</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {report.details.operating_rooms.length > 0 ? report.details.operating_rooms.map((room) => (
-                            <tr key={room.room}>
-                              <td className="px-4 py-3 font-medium text-slate-900">{room.room}</td>
-                              <td className="px-4 py-3 text-slate-600">{formatMinutes(room.scheduled_minutes)}</td>
-                              <td className="px-4 py-3 text-slate-900">{room.utilization_percentage.toFixed(2)}%</td>
-                            </tr>
-                          )) : (
-                            <tr>
-                              <td colSpan={3} className="px-4 py-6 text-center text-slate-500">Sin datos de quirófanos</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                    <div className="h-72 p-4">
+                      {report.details.operating_rooms.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart layout="vertical" data={report.details.operating_rooms} margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis type="number" tick={{ fontSize: 12 }} unit="%" />
+                            <YAxis type="category" dataKey="room" width={130} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value) => [`${value}%`, 'Utilización']} />
+                            <Bar dataKey="utilization_percentage" name="Utilización" fill="#10b981" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <ChartEmpty text="Sin datos de quirófanos" />
+                      )}
                     </div>
                   </section>
 
@@ -299,60 +426,31 @@ export default function MvpReportesPage() {
                         Cirugías por estado
                       </h2>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Estado</th>
-                            <th className="px-4 py-3">Cantidad</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {report.details.statuses.length > 0 ? report.details.statuses.map((status) => (
-                            <tr key={status.estado}>
-                              <td className="px-4 py-3 font-medium text-slate-900"><StatusBadge kind="surgery" status={status.estado} /></td>
-                              <td className="px-4 py-3 text-slate-600">{status.count}</td>
-                            </tr>
-                          )) : (
-                            <tr>
-                              <td colSpan={2} className="px-4 py-6 text-center text-slate-500">Sin cirugías en el rango</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-
-                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                    <div className="border-b border-slate-200 px-4 py-3">
-                      <h2 className="flex items-center gap-2 font-semibold text-slate-900">
-                        <CalendarDays size={18} className="text-blue-600" />
-                        Espera por especialidad
-                      </h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Especialidad</th>
-                            <th className="px-4 py-3">Espera</th>
-                            <th className="px-4 py-3">Casos</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {report.details.wait_by_specialty.length > 0 ? report.details.wait_by_specialty.map((specialty) => (
-                            <tr key={specialty.specialty}>
-                              <td className="px-4 py-3 font-medium text-slate-900">{specialty.specialty}</td>
-                              <td className="px-4 py-3 text-slate-600">{specialty.average_wait_days.toFixed(1)} días</td>
-                              <td className="px-4 py-3 text-slate-600">{specialty.surgeries_count}</td>
-                            </tr>
-                          )) : (
-                            <tr>
-                              <td colSpan={3} className="px-4 py-6 text-center text-slate-500">Sin cirugías programadas</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                    <div className="h-72 p-4">
+                      {report.details.statuses.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={report.details.statuses}
+                              dataKey="count"
+                              nameKey="estado"
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={55}
+                              outerRadius={85}
+                              paddingAngle={2}
+                            >
+                              {report.details.statuses.map((entry, index) => (
+                                <Cell key={entry.estado} fill={SURGERY_STATUS_COLORS[entry.estado] ?? CHART_COLORS[index % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <ChartEmpty text="Sin cirugías en el rango" />
+                      )}
                     </div>
                   </section>
                 </div>

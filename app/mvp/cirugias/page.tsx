@@ -763,7 +763,6 @@ export default function MvpCirugiasPage() {
     planning?.status !== 'pending_approval' &&
     preflight?.can_plan !== false
   const modalTitle = canReviewPlanning ? 'Revisar planificación semanal' : 'Generar planificación semanal'
-  const shouldShowPendingApprovalSnack = canReviewPlanning && !isPlanningModalOpen
   const selectedIntervention = catalogs?.interventions.find((item) => item.id === surgeryForm.intervention_id)
   const compatibleSurgeons = (catalogs?.surgeons ?? []).filter(
     (surgeon) => selectedIntervention && surgeon.especialidadIds.includes(selectedIntervention.especialidadId),
@@ -818,7 +817,7 @@ export default function MvpCirugiasPage() {
                     Nueva cirugía
                   </button>
                 )}
-                {canCreatePlanning && (
+                {canCreatePlanning && !canReviewPlanning && (
                   <button
                     type="button"
                     onClick={() => setIsPlanningModalOpen(true)}
@@ -1529,25 +1528,6 @@ export default function MvpCirugiasPage() {
         busy={isDeletingPlanning}
         onConfirm={deletePlanning}
       />
-      {shouldShowPendingApprovalSnack && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg border border-amber-200 bg-white p-4 shadow-xl">
-          <div className="flex items-start gap-3">
-            <Clock size={20} className="mt-0.5 text-amber-600" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-900">Hay una planificación pendiente de aprobación</p>
-              <p className="mt-1 text-sm text-slate-600">Abrí la propuesta para aprobarla o rechazarla con motivo.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsPlanningModalOpen(true)}
-            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
-          >
-            <Eye size={14} />
-            Ver planificación
-          </button>
-        </div>
-      )}
     </div>
   )
 }
